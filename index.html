@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>AR Indoor Navigation - Notre Dame Siena College</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Landing Page -->
+    <div id="landing-page" class="landing-page">
+        <div class="landing-content">
+            <!-- School Header -->
+            <div class="school-header">
+                <div class="school-logo-wrapper">
+                    <img src="logo.png" alt="Notre Dame Siena College Logo" class="school-logo">
+                </div>
+                <h1 class="school-name">Notre Dame Siena College</h1>
+                <h2 class="school-location">
+                    <i class="bi bi-geo-alt"></i>
+                    <span>General Santos City</span>
+                </h2>
+                <div class="header-divider"></div>
+                <p class="app-subtitle">
+                    <i class="bi bi-compass"></i>
+                    <span>AR Indoor Navigation System</span>
+                </p>
+            </div>
+
+            <!-- Room Selection -->
+            <div class="room-selection-container">
+                <div class="section-header">
+                    <i class="bi bi-signpost-split"></i>
+                    <h3 class="selection-title">Select Your Destination</h3>
+                </div>
+                <div id="rooms-list" class="rooms-grid">
+                    <div class="loading-state">
+                        <i class="bi bi-hourglass-split"></i>
+                        <p class="loading-text">Loading destinations...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Location Status -->
+            <div class="location-status-container">
+                <div id="location-status" class="location-status">
+                    <div class="status-icon-wrapper">
+                        <i class="bi bi-geo-alt-fill"></i>
+                    </div>
+                    <div class="status-content">
+                        <span class="status-label">Location Status</span>
+                        <span id="location-status-text" class="status-text">Detecting your location...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="landing-footer">
+                <div class="footer-content">
+                    <div class="footer-icons">
+                        <i class="bi bi-shield-check"></i>
+                        <i class="bi bi-heart-fill"></i>
+                        <i class="bi bi-star-fill"></i>
+                    </div>
+                    <p class="copyright">
+                        <i class="bi bi-c-circle"></i>
+                        <span>2026 Notre Dame Siena College of General Santos City</span>
+                    </p>
+                    <p class="rights-text">All rights reserved</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AR View (Hidden Initially) -->
+    <div id="ar-view" class="ar-view hidden" style="display: none;">
+        <!-- Camera Container -->
+        <div id="camera-container" class="camera-container">
+            <video id="camera-video" autoplay playsinline></video>
+            <canvas id="ar-canvas"></canvas>
+        </div>
+
+        <!-- AR Overlay Elements -->
+        <div id="ar-overlay" class="ar-overlay">
+            <!-- AR Path with Multiple Arrows -->
+            <div id="ar-path-container" class="ar-path-container">
+                <!-- Multiple arrows forming a path -->
+                <div id="arrow-path" class="arrow-path"></div>
+            </div>
+
+            <!-- Destination Label (Fixed Position for Mobile Readability) -->
+            <div id="destination-label" class="destination-label">
+                <div class="destination-label-content">
+                    <i class="bi bi-geo-alt-fill"></i>
+                    <span id="destination-text">To: --</span>
+                </div>
+            </div>
+
+            <!-- Distance Display -->
+            <div id="distance-display" class="distance-display">
+                <span id="distance-text">--</span>
+            </div>
+
+            <!-- Arrival Message -->
+            <div id="arrival-message" class="arrival-message hidden">
+                <div class="arrival-content">
+                    <h2 id="arrival-title">You have arrived!</h2>
+                    <p id="arrival-room"></p>
+                    <button id="back-to-landing-btn" class="btn btn-primary">Back to Selection</button>
+                </div>
+            </div>
+
+            <!-- Heading Display (for debugging) -->
+            <div id="heading-display" class="heading-display">
+                <span>Heading: <span id="heading-value">--</span>°</span>
+            </div>
+
+            <!-- Environment Detection Messages -->
+            <div id="environment-message" class="environment-message hidden">
+                <div class="environment-content">
+                    <i id="environment-icon" class="bi"></i>
+                    <span id="environment-text"></span>
+                </div>
+            </div>
+
+            <!-- Back Button -->
+            <button id="back-btn" class="back-btn">
+                <i class="bi bi-arrow-left"></i>
+            </button>
+        </div>
+
+        <!-- Control Panel -->
+        <div id="control-panel" class="control-panel">
+            <div class="panel-header">
+                <h2>AR Navigation</h2>
+            </div>
+            
+            <!-- Camera Permission Section -->
+            <div id="camera-permission-section" class="panel-section">
+                <button id="request-camera-btn" class="btn btn-primary">Enable Camera</button>
+                <p class="help-text">Camera access is required for AR navigation</p>
+            </div>
+
+            <!-- Position Input Section -->
+            <div id="position-section" class="panel-section">
+                <h3>Your Position</h3>
+                <div class="input-group">
+                    <label for="ar-user-x">X Coordinate:</label>
+                    <input type="number" id="ar-user-x" step="0.1" value="10.0" placeholder="X">
+                </div>
+                <div class="input-group">
+                    <label for="ar-user-y">Y Coordinate:</label>
+                    <input type="number" id="ar-user-y" step="0.1" value="15.0" placeholder="Y">
+                </div>
+                <button id="update-position-btn" class="btn btn-secondary">Update Position</button>
+            </div>
+
+            <!-- Status Section -->
+            <div id="status-section" class="panel-section">
+                <div id="status-indicator" class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span id="status-text">Ready</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toggle Button for Control Panel -->
+        <button id="toggle-panel-btn" class="toggle-panel-btn">⚙️</button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

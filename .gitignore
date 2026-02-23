@@ -1,0 +1,22 @@
+# Environment and secrets (never commit)
+.env
+.env.local
+.env.*.local
+
+# Logs
+ngrok.log
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Optional: uncomment if you add Node later
+# node_modules/

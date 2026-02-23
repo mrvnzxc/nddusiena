@@ -1,0 +1,1327 @@
+/* AR Indoor Navigation System - Mobile-First Styles */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    background: #e8e8e8;
+    width: 100%;
+    height: 100%;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    overflow: auto;
+    width: 100%;
+    min-height: 100%;
+    background: #e8e8e8;
+    color: #2d3748;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Landing Page */
+.landing-page {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    z-index: 200;
+    background: #e8e8e8;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    position: relative;
+}
+
+/* Wavy Background Pattern */
+.landing-page::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #d0d0d0 0%, #ffffff 30%, #c0c0c0 60%, #ff6b6b 100%);
+    background-size: 400% 400%;
+    animation: gradientShift 15s ease infinite;
+    opacity: 0.15;
+    z-index: -2;
+}
+
+.landing-page::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: -100px;
+    width: calc(100% + 200px);
+    height: 100%;
+    background-image: 
+        /* Gray wave layer */
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='200' viewBox='0 0 400 200'%3E%3Cpath d='M0,100 Q100,60 200,100 T400,100 L400,200 L0,200 Z' fill='%23b0b0b0' opacity='0.2'/%3E%3C/svg%3E"),
+        /* White wave layer */
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='450' height='220' viewBox='0 0 450 220'%3E%3Cpath d='M0,110 Q112.5,70 225,110 T450,110 L450,220 L0,220 Z' fill='%23ffffff' opacity='0.15'/%3E%3C/svg%3E"),
+        /* Red accent wave layer */
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='380' height='180' viewBox='0 0 380 180'%3E%3Cpath d='M0,90 Q95,50 190,90 T380,90 L380,180 L0,180 Z' fill='%23ff6b6b' opacity='0.08'/%3E%3C/svg%3E");
+    background-size: 400px 200px, 450px 220px, 380px 180px;
+    background-position: 0 0, 60px 20px, 30px 10px;
+    background-repeat: repeat;
+    z-index: -1;
+    overflow: hidden;
+    animation: waveFlow 15s linear infinite;
+}
+
+@keyframes gradientShift {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+@keyframes waveFlow {
+    0% {
+        background-position: 0 0, 60px 20px, 30px 10px;
+    }
+    100% {
+        background-position: 400px 0, 510px 20px, 410px 10px;
+    }
+}
+
+.landing-page.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.landing-content {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 24px 20px;
+    max-width: 600px;
+    margin: 0 auto;
+    background: transparent;
+    position: relative;
+    z-index: 1;
+}
+
+/* School Header */
+.school-header {
+    text-align: center;
+    padding: 32px 20px 40px;
+    margin-bottom: 32px;
+}
+
+.school-logo-wrapper {
+    width: 120px;
+    height: 120px;
+    margin: 0 auto 24px;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.school-logo {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+@keyframes float {
+    0%, 100% {
+        transform: translateY(0px);
+    }
+    50% {
+        transform: translateY(-8px);
+    }
+}
+
+.school-name {
+    font-size: 32px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: #1a202c;
+    letter-spacing: -0.5px;
+    line-height: 1.2;
+}
+
+.school-location {
+    font-size: 16px;
+    font-weight: 500;
+    color: #4a5568;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.school-location i {
+    font-size: 18px;
+    color: #4a5568;
+}
+
+.header-divider {
+    width: 60px;
+    height: 4px;
+    background: #4a5568;
+    margin: 0 auto 20px;
+    border-radius: 2px;
+}
+
+.app-subtitle {
+    font-size: 14px;
+    font-weight: 500;
+    color: #718096;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.app-subtitle i {
+    font-size: 16px;
+    color: #4a5568;
+}
+
+/* Room Selection Container */
+.room-selection-container {
+    flex: 1;
+    margin-bottom: 32px;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.section-header i {
+    font-size: 24px;
+    color: #4a5568;
+}
+
+.selection-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1a202c;
+    margin: 0;
+    letter-spacing: -0.3px;
+}
+
+.rooms-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.room-card {
+    background: #ffffff;
+    border: 2px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    position: relative;
+    overflow: hidden;
+}
+
+.room-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    transform: scaleY(0);
+    transition: transform 0.3s ease;
+}
+
+/* Finance Office - Blue */
+.room-card.room-finance {
+    border-color: #4299e1;
+}
+
+.room-card.room-finance::before {
+    background: #4299e1;
+}
+
+.room-card.room-finance:hover {
+    border-color: #3182ce;
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(66, 153, 225, 0.25);
+}
+
+.room-card.room-finance .room-icon {
+    background: #4299e1;
+    box-shadow: 0 4px 12px rgba(66, 153, 225, 0.3);
+}
+
+.room-card.room-finance:hover .room-icon {
+    background: #3182ce;
+}
+
+/* Guidance Office - Green */
+.room-card.room-guidance {
+    border-color: #48bb78;
+}
+
+.room-card.room-guidance::before {
+    background: #48bb78;
+}
+
+.room-card.room-guidance:hover {
+    border-color: #38a169;
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(72, 187, 120, 0.25);
+}
+
+.room-card.room-guidance .room-icon {
+    background: #48bb78;
+    box-shadow: 0 4px 12px rgba(72, 187, 120, 0.3);
+}
+
+.room-card.room-guidance:hover .room-icon {
+    background: #38a169;
+}
+
+/* Registrar Office - Purple */
+.room-card.room-registrar {
+    border-color: #9f7aea;
+}
+
+.room-card.room-registrar::before {
+    background: #9f7aea;
+}
+
+.room-card.room-registrar:hover {
+    border-color: #805ad5;
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(159, 122, 234, 0.25);
+}
+
+.room-card.room-registrar .room-icon {
+    background: #9f7aea;
+    box-shadow: 0 4px 12px rgba(159, 122, 234, 0.3);
+}
+
+.room-card.room-registrar:hover .room-icon {
+    background: #805ad5;
+}
+
+.room-card:hover::before {
+    transform: scaleY(1);
+}
+
+.room-card:active {
+    transform: translateY(-2px);
+}
+
+.room-icon {
+    width: 56px;
+    height: 56px;
+    min-width: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 14px;
+    font-size: 28px;
+    color: #fff;
+    transition: transform 0.3s ease;
+}
+
+.room-card:hover .room-icon {
+    transform: scale(1.1) rotate(5deg);
+}
+
+.room-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.room-card-name {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    color: #1a202c;
+    letter-spacing: -0.2px;
+}
+
+.room-card-coords {
+    font-size: 13px;
+    color: #718096;
+    font-weight: 500;
+}
+
+.loading-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #718096;
+}
+
+.loading-state i {
+    font-size: 32px;
+    color: #4a5568;
+    margin-bottom: 12px;
+    display: block;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Location Status Container */
+.location-status-container {
+    margin-bottom: 24px;
+}
+
+.location-status {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border: 2px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    transition: all 0.3s ease;
+}
+
+.status-icon-wrapper {
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f7fafc;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+}
+
+.location-status i {
+    font-size: 24px;
+    color: #718096;
+    transition: color 0.3s ease;
+}
+
+.status-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.status-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #a0aec0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-text {
+    font-size: 14px;
+    font-weight: 600;
+    color: #2d3748;
+    line-height: 1.4;
+}
+
+.location-status.status-success {
+    border-color: #48bb78;
+    background: #f0fff4;
+}
+
+.location-status.status-success .status-icon-wrapper {
+    background: #c6f6d5;
+}
+
+.location-status.status-success i {
+    color: #48bb78;
+}
+
+.location-status.status-error {
+    border-color: #f56565;
+    background: #fff5f5;
+}
+
+.location-status.status-error .status-icon-wrapper {
+    background: #fed7d7;
+}
+
+.location-status.status-error i {
+    color: #f56565;
+}
+
+.location-status.status-detecting {
+    border-color: #ed8936;
+    background: #fffaf0;
+}
+
+.location-status.status-detecting .status-icon-wrapper {
+    background: #feebc8;
+}
+
+.location-status.status-detecting i {
+    color: #ed8936;
+    animation: pulse 2s infinite;
+}
+
+/* Landing Footer */
+.landing-footer {
+    padding: 24px 20px;
+    text-align: center;
+    margin-top: auto;
+    border-top: 1px solid #e2e8f0;
+}
+
+.footer-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.footer-icons {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.footer-icons i {
+    font-size: 18px;
+    color: #cbd5e0;
+    transition: color 0.3s ease;
+}
+
+.footer-icons i:hover {
+    color: #4a5568;
+}
+
+.copyright {
+    font-size: 12px;
+    color: #718096;
+    line-height: 1.6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-weight: 500;
+}
+
+.copyright i {
+    font-size: 12px;
+}
+
+.rights-text {
+    font-size: 11px;
+    color: #a0aec0;
+    font-weight: 500;
+}
+
+/* AR View */
+.ar-view {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 100;
+}
+
+.ar-view.hidden {
+    display: none !important;
+}
+
+/* Back Button */
+.back-btn {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.7);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    color: #fff;
+    font-size: 24px;
+    cursor: pointer;
+    z-index: 99;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(10px);
+    transition: all 0.2s ease;
+    pointer-events: auto;
+}
+
+.back-btn:hover {
+    background: rgba(0, 0, 0, 0.9);
+    transform: scale(1.1);
+}
+
+.back-btn:active {
+    transform: scale(0.95);
+}
+
+/* Camera Container - Full Screen Background */
+.camera-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    overflow: hidden;
+}
+
+#camera-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+#ar-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 2;
+}
+
+/* AR Overlay - Transparent layers on top of camera */
+.ar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 3;
+    pointer-events: none;
+}
+
+/* AR Path Container - Multiple arrows integrated into real world */
+.ar-path-container {
+    position: fixed;
+    bottom: 18%;
+    left: 50%;
+    transform: translateX(-50%);
+    perspective: 2000px; /* Stronger perspective for 3D effect */
+    perspective-origin: center bottom;
+    pointer-events: none;
+    z-index: 12;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    display: none;
+    width: 100%;
+    height: 60%;
+    transform-style: preserve-3d;
+    /* Make arrows look like they're inside the camera view */
+    mix-blend-mode: normal;
+}
+
+.arrow-path {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transform-origin: center bottom;
+    /* Anchor at bottom, only rotate direction */
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    transition: none; /* NO TRANSITION - instant rotation for responsiveness */
+    will-change: transform; /* Optimize for frequent updates */
+}
+
+/* Individual Arrow Marker - 3D arrows integrated into real world */
+.ar-arrow-marker {
+    position: absolute;
+    width: 90px;
+    height: 90px;
+    transform-style: preserve-3d;
+    transition: none; /* NO TRANSITION - instant updates for responsiveness */
+    animation: arrowGlow 2s ease-in-out infinite;
+    bottom: 0;
+    left: 50%;
+    transform-origin: center bottom;
+    /* Arrows standing up more (60deg) to look 3D and integrated */
+    transform: translateX(-50%) rotateX(60deg) translateZ(0px);
+    /* Enhanced 3D shadow for real-world integration */
+    filter: drop-shadow(0 8px 16px rgba(0, 255, 136, 0.6)) 
+            drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4));
+    /* Make arrows look like they're in the real world */
+    will-change: transform;
+}
+
+/* Removed arrowDrop animation for immediate visibility */
+
+.ar-arrow-marker svg {
+    width: 100%;
+    height: 100%;
+    /* Enhanced glow for better visibility on ground */
+    filter: drop-shadow(0 6px 12px rgba(0, 255, 136, 0.8)) 
+            drop-shadow(0 3px 6px rgba(0, 255, 136, 0.5))
+            drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+/* Arrow shape - Green chevron style */
+.ar-arrow-marker .arrow-shape {
+    fill: #00ff88;
+    stroke: #00cc6a;
+    stroke-width: 2;
+}
+
+@keyframes arrowGlow {
+    0%, 100% {
+        opacity: 1;
+        filter: drop-shadow(0 6px 12px rgba(0, 255, 136, 0.8)) 
+                drop-shadow(0 3px 6px rgba(0, 255, 136, 0.5));
+    }
+    50% {
+        opacity: 0.9;
+        filter: drop-shadow(0 8px 16px rgba(0, 255, 136, 1)) 
+                drop-shadow(0 4px 8px rgba(0, 255, 136, 0.7));
+    }
+}
+
+/* 3D Floor Effect for Arrows - Realistic ground shadow */
+.ar-arrow-marker::before {
+    content: '';
+    position: absolute;
+    bottom: -12px;
+    left: 50%;
+    transform: translateX(-50%) rotateX(90deg) translateZ(-2px);
+    width: 85px;
+    height: 25px;
+    background: radial-gradient(ellipse, rgba(0, 255, 136, 0.4) 0%, rgba(0, 255, 136, 0.1) 50%, transparent 100%);
+    border-radius: 50%;
+    filter: blur(12px);
+    transform-origin: center bottom;
+    /* Shadow appears on the ground, integrated into real world */
+    z-index: -1;
+    opacity: 0.8;
+}
+
+/* Destination Label - Mobile Optimized */
+.destination-label {
+    position: fixed;
+    top: 10%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    pointer-events: none;
+    width: 90%;
+    max-width: 400px;
+}
+
+.destination-label-content {
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(15px);
+    color: #fff;
+    padding: 16px 24px;
+    border-radius: 12px;
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+    box-shadow: 
+        0 8px 24px rgba(0, 0, 0, 0.5),
+        0 0 0 2px rgba(0, 255, 136, 0.3);
+    border: 2px solid rgba(0, 255, 136, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.destination-label-content i {
+    font-size: 20px;
+    color: #00ff88;
+    flex-shrink: 0;
+}
+
+#destination-text {
+    color: #fff;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    letter-spacing: 0.5px;
+}
+
+/* Responsive adjustments for mobile */
+@media (max-width: 480px) {
+    html {
+        background: #e8e8e8;
+    }
+    
+    body {
+        background: #e8e8e8;
+    }
+    
+    .landing-page {
+        background: #e8e8e8;
+    }
+    
+    .school-name {
+        font-size: 26px;
+    }
+    
+    .school-location {
+        font-size: 14px;
+    }
+    
+    .selection-title {
+        font-size: 20px;
+    }
+    
+    .room-card {
+        padding: 16px;
+    }
+    
+    .room-icon {
+        width: 48px;
+        height: 48px;
+        font-size: 24px;
+    }
+    
+    .room-card-name {
+        font-size: 16px;
+    }
+    
+    .destination-label {
+        top: 8%;
+    }
+    
+    .destination-label-content {
+        font-size: 15px;
+        padding: 12px 18px;
+    }
+    
+    .distance-display {
+        top: 20%;
+        font-size: 18px;
+        padding: 10px 18px;
+    }
+    
+    .heading-display {
+        bottom: 22%;
+        font-size: 12px;
+        color: #00ff88;
+        padding: 6px 12px;
+    }
+    
+    .ar-path-container {
+        bottom: 18%;
+        height: 45%;
+    }
+    
+    .ar-arrow-marker {
+        width: 60px;
+        height: 60px;
+    }
+    
+    .arrow-path {
+        gap: 15px;
+    }
+}
+
+/* Large screens */
+@media (min-width: 768px) {
+    html {
+        background: #e8e8e8;
+    }
+    
+    body {
+        background: #e8e8e8;
+    }
+    
+    .landing-page {
+        background: #e8e8e8;
+    }
+    
+    .landing-content {
+        padding: 40px 32px;
+        background: transparent !important;
+    }
+    
+    .school-header {
+        padding: 48px 20px 48px;
+    }
+    
+    .school-name {
+        font-size: 36px;
+    }
+    
+    .rooms-grid {
+        gap: 20px;
+    }
+    
+    .room-card {
+        padding: 24px;
+    }
+}
+
+#destination-text {
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Distance Display */
+.distance-display {
+    position: fixed;
+    top: 22%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    padding: 12px 20px;
+    border-radius: 20px;
+    font-size: 20px;
+    font-weight: bold;
+    text-align: center;
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 19;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+#distance-text {
+    color: #00ff88;
+}
+
+/* Arrival Message */
+.arrival-message {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    pointer-events: auto;
+    animation: fadeIn 0.3s ease-in;
+}
+
+.arrival-message.hidden {
+    display: none;
+}
+
+.arrival-content {
+    text-align: center;
+    padding: 30px;
+    background: rgba(0, 102, 255, 0.9);
+    border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.arrival-content h2 {
+    font-size: 32px;
+    margin-bottom: 15px;
+    color: #fff;
+}
+
+.arrival-content p {
+    font-size: 20px;
+    color: #e0e0e0;
+}
+
+/* Heading Display (Debug) */
+.heading-display {
+    position: fixed;
+    bottom: 25%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    padding: 8px 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    backdrop-filter: blur(8px);
+    z-index: 15;
+    pointer-events: none;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+#heading-value {
+    color: #00ff88;
+    font-weight: bold;
+}
+
+/* Environment Detection Message */
+.environment-message {
+    position: fixed;
+    top: 28%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 18;
+    pointer-events: none;
+    animation: slideDown 0.3s ease-out;
+}
+
+.environment-message.hidden {
+    display: none;
+}
+
+.environment-content {
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(15px);
+    color: #fff;
+    padding: 14px 20px;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    text-align: center;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    white-space: nowrap;
+    border: 2px solid;
+}
+
+.environment-wall {
+    border-color: rgba(255, 170, 0, 0.6);
+    background: rgba(255, 170, 0, 0.15);
+}
+
+.environment-wall .bi {
+    color: #ffaa00;
+    font-size: 20px;
+}
+
+.environment-stairs {
+    border-color: rgba(0, 102, 255, 0.6);
+    background: rgba(0, 102, 255, 0.15);
+}
+
+.environment-stairs .bi {
+    color: #0066FF;
+    font-size: 20px;
+}
+
+.environment-hallway {
+    border-color: rgba(0, 255, 136, 0.6);
+    background: rgba(0, 255, 136, 0.15);
+}
+
+.environment-hallway .bi {
+    color: #00ff88;
+    font-size: 20px;
+}
+
+.environment-door {
+    border-color: rgba(255, 200, 0, 0.6);
+    background: rgba(255, 200, 0, 0.15);
+}
+
+.environment-door .bi {
+    color: #ffc800;
+    font-size: 20px;
+}
+
+.environment-gate {
+    border-color: rgba(0, 200, 255, 0.6);
+    background: rgba(0, 200, 255, 0.15);
+}
+
+.environment-gate .bi {
+    color: #00c8ff;
+    font-size: 20px;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+/* Control Panel */
+.control-panel {
+    position: fixed;
+    top: 0;
+    right: -100%;
+    width: 85%;
+    max-width: 400px;
+    height: 100%;
+    background: rgba(20, 20, 20, 0.95);
+    backdrop-filter: blur(20px);
+    z-index: 100;
+    overflow-y: auto;
+    transition: right 0.3s ease-out;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.control-panel.open {
+    right: 0;
+}
+
+.panel-header {
+    padding: 20px;
+    background: rgba(0, 102, 255, 0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.panel-header h2 {
+    font-size: 24px;
+    color: #fff;
+}
+
+.panel-section {
+    padding: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.panel-section h3 {
+    font-size: 18px;
+    margin-bottom: 15px;
+    color: #00ff88;
+}
+
+.input-group {
+    margin-bottom: 15px;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 14px;
+    color: #ccc;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 16px;
+}
+
+.input-group input:focus {
+    outline: none;
+    border-color: #0066FF;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* Buttons */
+.btn {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-top: 10px;
+}
+
+.btn-primary {
+    background: #0066FF;
+    color: #fff;
+}
+
+.btn-primary:hover {
+    background: #0052CC;
+    transform: scale(1.02);
+}
+
+.btn-primary:active {
+    transform: scale(0.98);
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.rooms-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Landing page room cards (different from control panel) */
+.rooms-grid .room-card {
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 15px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.room-btn {
+    padding: 15px;
+    background: rgba(0, 102, 255, 0.2);
+    border: 2px solid rgba(0, 102, 255, 0.3);
+    border-radius: 10px;
+    color: #fff;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+}
+
+.room-btn:hover {
+    background: rgba(0, 102, 255, 0.3);
+    border-color: #0066FF;
+    transform: translateX(5px);
+}
+
+.room-btn.active {
+    background: rgba(0, 102, 255, 0.5);
+    border-color: #0066FF;
+    box-shadow: 0 0 15px rgba(0, 102, 255, 0.5);
+}
+
+.room-btn .room-name {
+    font-weight: bold;
+    font-size: 18px;
+    margin-bottom: 5px;
+}
+
+.room-btn .room-coords {
+    font-size: 12px;
+    color: #aaa;
+}
+
+/* Toggle Panel Button */
+.toggle-panel-btn {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: rgba(0, 102, 255, 0.9);
+    border: none;
+    color: #fff;
+    font-size: 24px;
+    cursor: pointer;
+    z-index: 99;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s ease;
+}
+
+.toggle-panel-btn:hover {
+    background: rgba(0, 102, 255, 1);
+    transform: scale(1.1);
+}
+
+.toggle-panel-btn:active {
+    transform: scale(0.95);
+}
+
+/* Status Indicator */
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #00ff88;
+    animation: pulse 2s infinite;
+}
+
+.status-dot.warning {
+    background: #ffaa00;
+}
+
+.status-dot.error {
+    background: #ff4444;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.help-text {
+    font-size: 12px;
+    color: #aaa;
+    margin-top: 8px;
+    text-align: center;
+}
+
+.loading-text {
+    text-align: center;
+    color: #718096;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Hide control panel on very small screens when closed */
+@media (max-width: 480px) {
+    .control-panel {
+        width: 90%;
+    }
+}

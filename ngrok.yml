@@ -1,0 +1,38 @@
+# Ngrok Configuration for AR Indoor Navigation System
+# Notre Dame Siena College - General Santos City
+
+version: "2"
+authtoken: 2yjRdE6lySntsUg6te7TPkcPUi7_6djEewaEehXC51Rq5DaJX
+
+# Tunnels configuration
+tunnels:
+  # HTTP tunnel for the web application
+  # XAMPP default Apache port is 80, but if you're using a different port, change it here
+  web:
+    addr: 80
+    proto: http
+    inspect: true
+    # Add headers to help with browser compatibility
+    request_header:
+      add:
+        - "ngrok-skip-browser-warning: true"
+    # Optional: Set a custom domain if you have one (requires paid plan)
+    # hostname: your-custom-domain.ngrok.io
+
+  # Alternative: If you're using port 8080 or another port, uncomment and modify:
+  # web:
+  #   addr: 8080
+  #   proto: http
+  #   inspect: true
+
+# Global configuration
+region: us
+# Other regions: ap (Asia Pacific), au (Australia), eu (Europe), jp (Japan), sa (South America), in (India)
+
+# Logging
+log_level: info
+log_format: logfmt
+log: ngrok.log
+
+# Web interface (optional - for monitoring)
+web_addr: localhost:4040
