@@ -1008,10 +1008,11 @@ async function loadRooms() {
         console.error('Error loading rooms:', error);
         updateStatus('Failed to load rooms', 'error');
         
-        // Fallback: Use hardcoded rooms if API fails
+        // Fallback: Use hardcoded rooms if API fails.
+        // Guidance is intentionally omitted so it never appears
+        // when Supabase/PHＰ is unavailable (e.g. static hosting).
         AppState.rooms = [
             { name: 'finance', display_name: 'Finance', x: 15.0, y: 25.0, floor: 1 },
-            { name: 'guidance', display_name: 'Guidance', x: 30.0, y: 10.0, floor: 1 },
             { name: 'registrar', display_name: 'Registrar', x: 5.0, y: 35.0, floor: 1 },
             { name: 'clinic', display_name: 'Clinic', x: 12.0, y: 18.0, floor: 1 }
         ];
