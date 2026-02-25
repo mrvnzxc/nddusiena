@@ -326,6 +326,30 @@ body {
     background: #805ad5;
 }
 
+/* Clinic - Red */
+.room-card.room-clinic {
+    border-color: #f56565;
+}
+
+.room-card.room-clinic::before {
+    background: #f56565;
+}
+
+.room-card.room-clinic:hover {
+    border-color: #e53e3e;
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(245, 101, 101, 0.3);
+}
+
+.room-card.room-clinic .room-icon {
+    background: #f56565;
+    box-shadow: 0 4px 12px rgba(245, 101, 101, 0.35);
+}
+
+.room-card.room-clinic:hover .room-icon {
+    background: #e53e3e;
+}
+
 .room-card:hover::before {
     transform: scaleY(1);
 }

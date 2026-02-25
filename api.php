@@ -151,6 +151,37 @@ switch ($action) {
         ]);
         break;
 
+    case 'get_nav_graph':
+        // New: provide checkpoints, edges, and destinations for graph-based navigation
+        $cpResult = supabase_get('checkpoints', 'select=id,name,latitude,longitude');
+        if ($cpResult['error']) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to fetch checkpoints: ' . $cpResult['error']]);
+            break;
+        }
+
+        $edgeResult = supabase_get('edges', 'select=id,from_checkpoint,to_checkpoint,distance');
+        if ($edgeResult['error']) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to fetch edges: ' . $edgeResult['error']]);
+            break;
+        }
+
+        $destResult = supabase_get('destinations', 'select=id,name,checkpoint_id,dest_latitude,dest_longitude');
+        if ($destResult['error']) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to fetch destinations: ' . $destResult['error']]);
+            break;
+        }
+
+        echo json_encode([
+            'success'      => true,
+            'checkpoints'  => $cpResult['data'] ?: [],
+            'edges'        => $edgeResult['data'] ?: [],
+            'destinations' => $destResult['data'] ?: [],
+        ]);
+        break;
+
     case 'save_position':
         if ($method !== 'POST') {
             http_response_code(405);

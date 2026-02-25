@@ -15,12 +15,24 @@ const AppState = {
     gpsPosition: { lat: null, lng: null }, // GPS coordinates
     heading: null,
     isNavigating: false,
+    // Local-coordinate arrival threshold for legacy direct navigation.
+    // Graph-based navigation uses a 5m threshold internally.
     arrivalThreshold: 2.0, // meters
     orientationSupported: false,
     cameraPermissionGranted: false,
     locationDetected: false,
     locationWatchId: null,
     lastEnvironmentCheck: null
+};
+
+// Graph-based navigation state (checkpoint graph using Supabase)
+const GraphNav = {
+    checkpoints: [],
+    edges: [],
+    destinations: [],
+    engine: null,
+    activeDestination: null,   // destination row from graph (Finance, Registrar, Clinic)
+    pendingDestinationId: null // checkpoint_id to start from once GPS is ready
 };
 
 // GPS to Local Coordinate Conversion Configuration
@@ -34,6 +46,7 @@ const BUILDING_CONFIG = {
 
 // API Configuration
 const API_BASE_URL = 'api.php';
+const GRAPH_API_ACTION = 'get_nav_graph';
 
 /**
  * Initialize the application
@@ -56,6 +69,9 @@ async function init() {
     
     // Load rooms from database
     await loadRooms();
+
+    // Load checkpoint graph (checkpoints, edges, destinations) for graph-based navigation
+    await loadNavigationGraph();
     
     // Detect user's current location
     await detectUserLocation();
@@ -226,6 +242,41 @@ function startWatchingPosition() {
             // Update AR view position display if visible
             updateARPositionDisplay();
             
+            // Initialize graph-based navigation path once GPS + destination are ready
+            if (GraphNav.engine && GraphNav.pendingDestinationId && !GraphNav.engine.path) {
+                try {
+                    GraphNav.engine.startNavigationFromUser({
+                        userLat: lat,
+                        userLon: lng,
+                        destinationCheckpointId: GraphNav.pendingDestinationId
+                    });
+
+                    GraphNav.engine.onCheckpointReached = (checkpoint, index, total) => {
+                        console.log('Reached checkpoint:', checkpoint.name);
+                    };
+
+                    GraphNav.engine.onArrived = (finalCheckpoint) => {
+                        console.log('Arrived at final checkpoint:', finalCheckpoint.name);
+                        if (GraphNav.activeDestination) {
+                            showArrivalMessage(GraphNav.activeDestination.name);
+                        } else if (AppState.selectedRoom) {
+                            showArrivalMessage(AppState.selectedRoom.display_name);
+                        }
+                        hideFloorMarker();
+                        hideEnvironmentMessage();
+                        AppState.isNavigating = false;
+                        GraphNav.pendingDestinationId = null;
+                    };
+                } catch (err) {
+                    console.error('Error starting graph navigation:', err);
+                }
+            }
+
+            // Update graph-based engine with latest GPS
+            if (GraphNav.engine && GraphNav.engine.path) {
+                GraphNav.engine.updateUserPosition(lat, lng);
+            }
+
             // Update navigation if active
             if (AppState.isNavigating && AppState.selectedRoom) {
                 updateNavigation();
@@ -526,29 +577,64 @@ function updateNavigation() {
     if (AppState.userPosition.x === null || AppState.userPosition.y === null) {
         return;
     }
+
+    const usingGraph =
+        GraphNav.engine &&
+        GraphNav.engine.path &&
+        GraphNav.activeDestination;
+
+    let destination;
+    let userFloor = AppState.userPosition.floor || 1;
+    let bearing;
+    let distance;
+    let labelName;
+
+    if (usingGraph) {
+        const currentCheckpoint = GraphNav.engine.getCurrentTargetCheckpoint();
+        if (!currentCheckpoint) {
+            // Final checkpoint already reached; arrival callback handles UI.
+            return;
+        }
+
+        // Convert checkpoint GPS to local building coordinates for AR math
+        const local = currentCheckpoint.local || convertGPSToLocal(
+            parseFloat(currentCheckpoint.latitude),
+            parseFloat(currentCheckpoint.longitude)
+        );
+        currentCheckpoint.local = local;
+
+        destination = {
+            x: local.x,
+            y: local.y,
+            floor: 1
+        };
+
+        labelName = `${GraphNav.activeDestination.name} (next: ${currentCheckpoint.name})`;
+    } else {
+        destination = {
+            x: AppState.selectedRoom.x,
+            y: AppState.selectedRoom.y,
+            floor: AppState.selectedRoom.floor || 1
+        };
+
+        labelName = AppState.selectedRoom.display_name;
+    }
     
-    const destination = {
-        x: AppState.selectedRoom.x,
-        y: AppState.selectedRoom.y,
-        floor: AppState.selectedRoom.floor || 1
-    };
+    // Calculate bearing to destination (local-coordinate equivalent)
+    bearing = calculateBearing(AppState.userPosition, destination);
     
-    const userFloor = AppState.userPosition.floor || 1;
-    
-    // Calculate bearing to destination
-    const bearing = calculateBearing(AppState.userPosition, destination);
-    
-    // Calculate distance
-    const distance = calculateDistance(AppState.userPosition, destination);
+    // Calculate distance in meters (local coordinate space)
+    distance = calculateDistance(AppState.userPosition, destination);
     
     // Update distance display
     updateDistanceDisplay(distance);
     
     // Update destination label
-    updateDestinationLabel(AppState.selectedRoom.display_name);
+    updateDestinationLabel(labelName);
     
-    // Check for arrival
-    if (distance < AppState.arrivalThreshold) {
+    // For legacy direct navigation, arrival is based on distance to final room.
+    // For graph navigation, per-checkpoint arrival is handled inside GraphNav.engine.
+    if (!usingGraph && distance < AppState.arrivalThreshold) {
         showArrivalMessage(AppState.selectedRoom.display_name);
         hideFloorMarker();
         hideEnvironmentMessage();
@@ -603,7 +689,22 @@ function updateNavigation() {
     }
     
     // Calculate pathway waypoints
-    const newPathway = calculatePathway(AppState.userPosition, destination);
+    let newPathway;
+    if (usingGraph) {
+        // Build waypoints from remaining checkpoints in the graph path
+        const remaining = GraphNav.engine.getRemainingPathCheckpoints() || [];
+        const waypoints = remaining.map(cp => {
+            const local = cp.local || convertGPSToLocal(
+                parseFloat(cp.latitude),
+                parseFloat(cp.longitude)
+            );
+            cp.local = local;
+            return { x: local.x, y: local.y };
+        });
+        newPathway = waypoints.length > 0 ? waypoints : [destination];
+    } else {
+        newPathway = calculatePathway(AppState.userPosition, destination);
+    }
     
     // Check if pathway changed significantly (more than 2 meters difference)
     let pathwayChanged = false;
@@ -911,7 +1012,8 @@ async function loadRooms() {
         AppState.rooms = [
             { name: 'finance', display_name: 'Finance', x: 15.0, y: 25.0, floor: 1 },
             { name: 'guidance', display_name: 'Guidance', x: 30.0, y: 10.0, floor: 1 },
-            { name: 'registrar', display_name: 'Registrar', x: 5.0, y: 35.0, floor: 1 }
+            { name: 'registrar', display_name: 'Registrar', x: 5.0, y: 35.0, floor: 1 },
+            { name: 'clinic', display_name: 'Clinic', x: 12.0, y: 18.0, floor: 1 }
         ];
         renderRoomsList();
     }
@@ -921,12 +1023,31 @@ async function loadRooms() {
  * Get Bootstrap icon for room
  */
 function getRoomIcon(roomName) {
-    const iconMap = {
-        'finance': 'bi-cash-coin',
-        'guidance': 'bi-person-heart',
-        'registrar': 'bi-file-earmark-text'
-    };
-    return iconMap[roomName.toLowerCase()] || 'bi-geo-alt';
+    if (!roomName) return 'bi-geo-alt';
+    const key = roomName.toLowerCase();
+
+    // Clinic: medicine / health icon
+    if (key.includes('clinic')) {
+        return 'bi-clipboard2-pulse';
+    }
+
+    // Finance / Cashier: money icon
+    if (key.includes('finance') || key.includes('cashier')) {
+        return 'bi-cash-coin';
+    }
+
+    // Registrar: documents / records icon
+    if (key.includes('registrar')) {
+        return 'bi-file-earmark-text';
+    }
+
+    // Guidance (if you add it later)
+    if (key.includes('guidance') || key.includes('counsel')) {
+        return 'bi-person-heart';
+    }
+
+    // Default location pin
+    return 'bi-geo-alt';
 }
 
 /**
@@ -988,6 +1109,34 @@ function startNavigation(room) {
     
     AppState.selectedRoom = room;
     AppState.isNavigating = true;
+
+    // Configure graph-based navigation when the room is mapped to a destination checkpoint
+    GraphNav.activeDestination = null;
+    GraphNav.pendingDestinationId = null;
+
+    if (GraphNav.engine && GraphNav.destinations && GraphNav.destinations.length > 0) {
+        const roomKey = (room.display_name || room.name || '').toLowerCase();
+        let destName = null;
+
+        // Map room names to destination records in Supabase
+        if (roomKey.includes('finance')) {
+            destName = 'Finance';
+        } else if (roomKey.includes('registrar')) {
+            destName = 'Registrar';
+        } else if (roomKey.includes('clinic')) {
+            destName = 'Clinic';
+        }
+
+        if (destName) {
+            const destRecord = GraphNav.destinations.find(
+                d => (d.name || '').toLowerCase() === destName.toLowerCase()
+            );
+            if (destRecord) {
+                GraphNav.activeDestination = destRecord;
+                GraphNav.pendingDestinationId = destRecord.checkpoint_id || destRecord.checkpointId;
+            }
+        }
+    }
     
     // Switch to AR view
     switchToARView();
@@ -1154,3 +1303,232 @@ if (document.readyState === 'loading') {
 
 // Start navigation update loop
 requestAnimationFrame(startNavigationLoop);
+
+// === Graph-based navigation engine using checkpoints ===
+
+// Haversine helpers (meters)
+const EARTH_RADIUS_M = 6371000;
+
+function toRad(deg) {
+    return (deg * Math.PI) / 180;
+}
+
+function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) *
+            Math.cos(toRad(lat2)) *
+            Math.sin(dLon / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return EARTH_RADIUS_M * c;
+}
+
+function findNearestCheckpointGraph(lat, lon, checkpoints) {
+    let best = null;
+    let bestDist = Infinity;
+    for (const cp of checkpoints) {
+        const d = haversineDistanceMeters(
+            parseFloat(cp.latitude),
+            parseFloat(cp.longitude),
+            lat,
+            lon
+        );
+        if (d < bestDist) {
+            bestDist = d;
+            best = cp;
+        }
+    }
+    return { checkpoint: best, distance: bestDist };
+}
+
+function buildAdjacencyGraph(edges) {
+    const adj = new Map();
+    for (const e of edges) {
+        if (!adj.has(e.from_checkpoint)) {
+            adj.set(e.from_checkpoint, []);
+        }
+        adj.get(e.from_checkpoint).push({
+            to: e.to_checkpoint,
+            distance: parseFloat(e.distance)
+        });
+    }
+    return adj;
+}
+
+function dijkstraGraph(adjacency, startId, targetId) {
+    const dist = new Map();
+    const prev = new Map();
+    const unvisited = new Set();
+
+    for (const id of adjacency.keys()) {
+        unvisited.add(id);
+        dist.set(id, Infinity);
+    }
+    unvisited.add(startId);
+    if (!dist.has(startId)) dist.set(startId, Infinity);
+
+    dist.set(startId, 0);
+
+    while (unvisited.size > 0) {
+        let current = null;
+        let currentDist = Infinity;
+        for (const id of unvisited) {
+            const d = dist.get(id) ?? Infinity;
+            if (d < currentDist) {
+                currentDist = d;
+                current = id;
+            }
+        }
+
+        if (current === null || currentDist === Infinity) break;
+        unvisited.delete(current);
+
+        if (current === targetId) break;
+
+        const neighbors = adjacency.get(current) || [];
+        for (const { to, distance } of neighbors) {
+            const alt = currentDist + distance;
+            if (alt < (dist.get(to) ?? Infinity)) {
+                dist.set(to, alt);
+                prev.set(to, current);
+                if (!unvisited.has(to)) {
+                    unvisited.add(to);
+                }
+            }
+        }
+    }
+
+    const path = [];
+    let u = targetId;
+    while (u !== undefined) {
+        path.unshift(u);
+        u = prev.get(u);
+    }
+    if (path[0] !== startId) {
+        return null;
+    }
+    return path;
+}
+
+class NavigationEngineGraph {
+    constructor({ checkpoints, edges, arrivalRadiusMeters = 5 }) {
+        this.checkpoints = checkpoints;
+        this.checkpointById = new Map(checkpoints.map(cp => [cp.id, cp]));
+        this.adjacency = buildAdjacencyGraph(edges);
+        this.arrivalRadiusMeters = arrivalRadiusMeters;
+
+        this.path = null;      // array of checkpoint IDs (start..destination)
+        this.currentIndex = 0; // index of CURRENT target in path
+
+        this.onCheckpointReached = null;
+        this.onArrived = null;
+    }
+
+    startNavigationFromUser({ userLat, userLon, destinationCheckpointId }) {
+        const { checkpoint: nearest } = findNearestCheckpointGraph(
+            userLat,
+            userLon,
+            this.checkpoints
+        );
+        if (!nearest) {
+            throw new Error('No checkpoints available for navigation');
+        }
+
+        const path = dijkstraGraph(
+            this.adjacency,
+            nearest.id,
+            destinationCheckpointId
+        );
+        if (!path) {
+            throw new Error('No path to destination checkpoint');
+        }
+
+        this.path = path;
+        this.currentIndex = path.length > 1 ? 1 : 0;
+    }
+
+    getCurrentTargetCheckpoint() {
+        if (!this.path || this.currentIndex >= this.path.length) return null;
+        const id = this.path[this.currentIndex];
+        return this.checkpointById.get(id) || null;
+    }
+
+    getRemainingPathCheckpoints() {
+        if (!this.path) return [];
+        return this.path
+            .slice(this.currentIndex)
+            .map(id => this.checkpointById.get(id))
+            .filter(Boolean);
+    }
+
+    updateUserPosition(lat, lon) {
+        const target = this.getCurrentTargetCheckpoint();
+        if (!target) return;
+
+        const d = haversineDistanceMeters(
+            lat,
+            lon,
+            parseFloat(target.latitude),
+            parseFloat(target.longitude)
+        );
+
+        if (d < this.arrivalRadiusMeters) {
+            const reachedIndex = this.currentIndex;
+            this.currentIndex += 1;
+
+            if (this.onCheckpointReached) {
+                this.onCheckpointReached(target, reachedIndex, this.path.length);
+            }
+
+            if (this.currentIndex >= this.path.length) {
+                if (this.onArrived) {
+                    this.onArrived(target);
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Load navigation graph (checkpoints, edges, destinations) from API/Supabase.
+ */
+async function loadNavigationGraph() {
+    try {
+        const response = await fetch(`${API_BASE_URL}?action=${GRAPH_API_ACTION}`);
+        const data = await response.json();
+
+        if (!data || !data.success) {
+            console.warn('Graph navigation data not available:', data && data.error);
+            return;
+        }
+
+        GraphNav.checkpoints = data.checkpoints || [];
+        GraphNav.edges = data.edges || [];
+        GraphNav.destinations = data.destinations || [];
+
+        // Precompute local coordinates for each checkpoint for AR math
+        GraphNav.checkpoints.forEach(cp => {
+            const lat = parseFloat(cp.latitude);
+            const lng = parseFloat(cp.longitude);
+            if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+                cp.local = convertGPSToLocal(lat, lng);
+            }
+        });
+
+        GraphNav.engine = new NavigationEngineGraph({
+            checkpoints: GraphNav.checkpoints,
+            edges: GraphNav.edges,
+            arrivalRadiusMeters: 5
+        });
+
+        console.log('Graph navigation loaded:', {
+            checkpoints: GraphNav.checkpoints.length,
+            edges: GraphNav.edges.length,
+            destinations: GraphNav.destinations.length
+        });
+    } catch (err) {
+        console.error('Failed to load navigation graph:', err);
+    }
+}
