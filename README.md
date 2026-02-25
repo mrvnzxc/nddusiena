@@ -1,3 +1,41 @@
+# NDDSU Web-Based AR Navigation (Checkpoint Graph)
+
+This project implements a checkpoint-based AR-style navigation system for the NDDSU campus.  
+Instead of pointing straight to the final room coordinates, the arrow **always points only to the next checkpoint** on a shortest path over a graph stored in Supabase.
+
+## Supabase setup
+
+1. Create a new Supabase project.
+2. In the SQL editor:
+   - Paste and run `supabase_schema.sql`.
+   - Paste and run `supabase_seed.sql`.
+3. In the project settings, copy:
+   - Project URL
+   - Public anon key
+4. Open `navigation_app.js` and replace:
+
+```js
+const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
+```
+
+with your real values.
+
+## Running locally
+
+The project is just static HTML + JavaScript:
+
+1. Serve the `nddusiena` folder with your existing XAMPP setup.
+2. Open `index.html` in a mobile browser (HTTPS + GPS + compass recommended).
+3. Select a destination (Finance, Registrar, Clinic) and tap **Start navigation**.
+
+The app will:
+
+- Detect your GPS location.
+- Find the nearest checkpoint.
+- Use Dijkstra’s algorithm over the `checkpoints` and `edges` tables.
+- Navigate checkpoint-by-checkpoint until you reach the destination checkpoint.
+
 # Notre Dame Siena College – AR Indoor Navigation
 
 Mobile-first AR indoor navigation for campus (Finance, Guidance, Registrar). Uses browser camera, GPS, and device orientation.

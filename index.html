@@ -1,176 +1,232 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>AR Indoor Navigation - Notre Dame Siena College</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <!-- Landing Page -->
-    <div id="landing-page" class="landing-page">
-        <div class="landing-content">
-            <!-- School Header -->
-            <div class="school-header">
-                <div class="school-logo-wrapper">
-                    <img src="logo.png" alt="Notre Dame Siena College Logo" class="school-logo">
-                </div>
-                <h1 class="school-name">Notre Dame Siena College</h1>
-                <h2 class="school-location">
-                    <i class="bi bi-geo-alt"></i>
-                    <span>General Santos City</span>
-                </h2>
-                <div class="header-divider"></div>
-                <p class="app-subtitle">
-                    <i class="bi bi-compass"></i>
-                    <span>AR Indoor Navigation System</span>
-                </p>
-            </div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NDDSU AR Navigation</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #050711;
+        --panel: #111827;
+        --accent: #3b82f6;
+        --accent-soft: rgba(59, 130, 246, 0.12);
+        --text: #e5e7eb;
+        --muted: #9ca3af;
+        --danger: #f97373;
+        --success: #22c55e;
+      }
 
-            <!-- Room Selection -->
-            <div class="room-selection-container">
-                <div class="section-header">
-                    <i class="bi bi-signpost-split"></i>
-                    <h3 class="selection-title">Select Your Destination</h3>
-                </div>
-                <div id="rooms-list" class="rooms-grid">
-                    <div class="loading-state">
-                        <i class="bi bi-hourglass-split"></i>
-                        <p class="loading-text">Loading destinations...</p>
-                    </div>
-                </div>
-            </div>
+      * {
+        box-sizing: border-box;
+      }
 
-            <!-- Location Status -->
-            <div class="location-status-container">
-                <div id="location-status" class="location-status">
-                    <div class="status-icon-wrapper">
-                        <i class="bi bi-geo-alt-fill"></i>
-                    </div>
-                    <div class="status-content">
-                        <span class="status-label">Location Status</span>
-                        <span id="location-status-text" class="status-text">Detecting your location...</span>
-                    </div>
-                </div>
-            </div>
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        background: radial-gradient(circle at top, #1f2937 0, var(--bg) 55%);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
 
-            <!-- Footer -->
-            <div class="landing-footer">
-                <div class="footer-content">
-                    <div class="footer-icons">
-                        <i class="bi bi-shield-check"></i>
-                        <i class="bi bi-heart-fill"></i>
-                        <i class="bi bi-star-fill"></i>
-                    </div>
-                    <p class="copyright">
-                        <i class="bi bi-c-circle"></i>
-                        <span>2026 Notre Dame Siena College of General Santos City</span>
-                    </p>
-                    <p class="rights-text">All rights reserved</p>
-                </div>
-            </div>
+      header {
+        padding: 1rem 1.25rem 0.5rem;
+      }
+
+      h1 {
+        font-size: 1.15rem;
+        margin: 0;
+      }
+
+      main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        padding: 0 1.25rem 1.25rem;
+        gap: 0.75rem;
+      }
+
+      .card {
+        background: linear-gradient(
+          to bottom right,
+          rgba(15, 23, 42, 0.96),
+          rgba(15, 23, 42, 0.9)
+        );
+        border-radius: 1rem;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.6);
+        padding: 0.9rem 1rem;
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: center;
+      }
+
+      select,
+      button {
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.5);
+        padding: 0.5rem 0.9rem;
+        font-size: 0.9rem;
+        background: rgba(15, 23, 42, 0.85);
+        color: var(--text);
+      }
+
+      select {
+        min-width: 150px;
+      }
+
+      button {
+        cursor: pointer;
+        border-color: rgba(59, 130, 246, 0.7);
+        background: radial-gradient(circle at top left, #2563eb, #1d4ed8);
+        color: white;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+      }
+
+      button[disabled] {
+        opacity: 0.5;
+        cursor: default;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        border-radius: 999px;
+        padding: 0.25rem 0.7rem;
+        font-size: 0.75rem;
+        background: rgba(15, 23, 42, 0.95);
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        color: var(--muted);
+      }
+
+      .status {
+        font-size: 0.8rem;
+        color: var(--muted);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+      }
+
+      .status strong {
+        color: var(--text);
+      }
+
+      .status .ok {
+        color: var(--success);
+      }
+
+      .status .err {
+        color: var(--danger);
+      }
+
+      .arrow-container {
+        margin-top: 0.25rem;
+        flex: 1;
+        min-height: 260px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      #arrow {
+        width: 0;
+        height: 0;
+        border-left: 32px solid transparent;
+        border-right: 32px solid transparent;
+        border-bottom: 80px solid var(--accent);
+        filter: drop-shadow(0 0 16px rgba(59, 130, 246, 0.7));
+        transform-origin: 50% 70%;
+        transition: transform 0.08s linear;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-top: 0.4rem;
+      }
+
+      .chip {
+        font-size: 0.7rem;
+        border-radius: 999px;
+        padding: 0.15rem 0.55rem;
+        background: rgba(15, 23, 42, 0.96);
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        color: var(--muted);
+      }
+
+      footer {
+        font-size: 0.7rem;
+        color: var(--muted);
+        padding: 0 1.25rem 0.9rem;
+      }
+
+      @media (min-width: 768px) {
+        main {
+          max-width: 680px;
+          margin: 0 auto 1.5rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>NDDSU AR Navigation</h1>
+    </header>
+    <main>
+      <section class="card">
+        <div class="row">
+          <label for="destination-select">Destination</label>
+          <select id="destination-select">
+            <option value="">Select destination…</option>
+            <option value="Finance">Finance</option>
+            <option value="Registrar">Registrar</option>
+            <option value="Clinic">Clinic</option>
+          </select>
+
+          <button id="start-nav-btn" disabled>
+            Start navigation
+          </button>
         </div>
-    </div>
-
-    <!-- AR View (Hidden Initially) -->
-    <div id="ar-view" class="ar-view hidden" style="display: none;">
-        <!-- Camera Container -->
-        <div id="camera-container" class="camera-container">
-            <video id="camera-video" autoplay playsinline></video>
-            <canvas id="ar-canvas"></canvas>
+        <div class="status" id="status-text">
+          <span class="pill">Waiting for Supabase…</span>
         </div>
+        <div class="chips" id="path-preview"></div>
+      </section>
 
-        <!-- AR Overlay Elements -->
-        <div id="ar-overlay" class="ar-overlay">
-            <!-- AR Path with Multiple Arrows -->
-            <div id="ar-path-container" class="ar-path-container">
-                <!-- Multiple arrows forming a path -->
-                <div id="arrow-path" class="arrow-path"></div>
-            </div>
-
-            <!-- Destination Label (Fixed Position for Mobile Readability) -->
-            <div id="destination-label" class="destination-label">
-                <div class="destination-label-content">
-                    <i class="bi bi-geo-alt-fill"></i>
-                    <span id="destination-text">To: --</span>
-                </div>
-            </div>
-
-            <!-- Distance Display -->
-            <div id="distance-display" class="distance-display">
-                <span id="distance-text">--</span>
-            </div>
-
-            <!-- Arrival Message -->
-            <div id="arrival-message" class="arrival-message hidden">
-                <div class="arrival-content">
-                    <h2 id="arrival-title">You have arrived!</h2>
-                    <p id="arrival-room"></p>
-                    <button id="back-to-landing-btn" class="btn btn-primary">Back to Selection</button>
-                </div>
-            </div>
-
-            <!-- Heading Display (for debugging) -->
-            <div id="heading-display" class="heading-display">
-                <span>Heading: <span id="heading-value">--</span>°</span>
-            </div>
-
-            <!-- Environment Detection Messages -->
-            <div id="environment-message" class="environment-message hidden">
-                <div class="environment-content">
-                    <i id="environment-icon" class="bi"></i>
-                    <span id="environment-text"></span>
-                </div>
-            </div>
-
-            <!-- Back Button -->
-            <button id="back-btn" class="back-btn">
-                <i class="bi bi-arrow-left"></i>
-            </button>
+      <section class="card arrow-section">
+        <div class="row" style="justify-content: space-between">
+          <div class="pill">
+            <span>Arrow → next checkpoint only</span>
+          </div>
+          <div class="pill" id="checkpoint-label">No route active</div>
         </div>
-
-        <!-- Control Panel -->
-        <div id="control-panel" class="control-panel">
-            <div class="panel-header">
-                <h2>AR Navigation</h2>
-            </div>
-            
-            <!-- Camera Permission Section -->
-            <div id="camera-permission-section" class="panel-section">
-                <button id="request-camera-btn" class="btn btn-primary">Enable Camera</button>
-                <p class="help-text">Camera access is required for AR navigation</p>
-            </div>
-
-            <!-- Position Input Section -->
-            <div id="position-section" class="panel-section">
-                <h3>Your Position</h3>
-                <div class="input-group">
-                    <label for="ar-user-x">X Coordinate:</label>
-                    <input type="number" id="ar-user-x" step="0.1" value="10.0" placeholder="X">
-                </div>
-                <div class="input-group">
-                    <label for="ar-user-y">Y Coordinate:</label>
-                    <input type="number" id="ar-user-y" step="0.1" value="15.0" placeholder="Y">
-                </div>
-                <button id="update-position-btn" class="btn btn-secondary">Update Position</button>
-            </div>
-
-            <!-- Status Section -->
-            <div id="status-section" class="panel-section">
-                <div id="status-indicator" class="status-indicator">
-                    <span class="status-dot"></span>
-                    <span id="status-text">Ready</span>
-                </div>
-            </div>
+        <div class="arrow-container">
+          <div id="arrow"></div>
         </div>
+      </section>
+    </main>
+    <footer>
+      Uses checkpoint graph navigation. Arrows never point directly to final room
+      coordinates—only to the next checkpoint on the path.
+    </footer>
 
-        <!-- Toggle Button for Control Panel -->
-        <button id="toggle-panel-btn" class="toggle-panel-btn">⚙️</button>
-    </div>
+    <!-- Supabase client -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2.48.0/dist/umd/supabase.min.js"></script>
 
-    <script src="script.js"></script>
-</body>
+    <!-- Main navigation logic -->
+    <script src="./navigation_app.js"></script>
+  </body>
 </html>
