@@ -30,13 +30,17 @@ const AppState = {
 // Graph-based navigation state (checkpoint graph using Supabase)
 const GraphNav = {
     checkpoints: [],
+    // Optional map from id -> checkpoint, filled after loadNavigationGraph
+    // (engine maintains its own map internally as well)
     edges: [],
     destinations: [],
     engine: null,
     activeDestination: null,   // destination row from graph (Finance, Registrar, Clinic)
     pendingDestinationId: null, // checkpoint_id to start from once GPS is ready
     finalLegActive: false,      // true when walking last meters to office door
-    finalCheckpoint: null       // last checkpoint before office
+    finalCheckpoint: null,      // last checkpoint before office
+    replanThreshold: 25,        // meters: when too far from current target, recompute path
+    lastReplanTs: 0             // timestamp of last replan (ms)
 };
 
 // GPS to Local Coordinate Conversion Configuration
@@ -246,34 +250,59 @@ function startWatchingPosition() {
             // Update AR view position display if visible
             updateARPositionDisplay();
             
-            // Initialize graph-based navigation path once GPS + destination are ready
-            if (GraphNav.engine && GraphNav.pendingDestinationId && !GraphNav.engine.path && !GraphNav.finalLegActive) {
-                try {
-                    GraphNav.engine.startNavigationFromUser({
-                        userLat: lat,
-                        userLon: lng,
-                        destinationCheckpointId: GraphNav.pendingDestinationId
-                    });
+            // Graph-based navigation: continuously map-match and replan when needed
+            if (GraphNav.engine && GraphNav.activeDestination && GraphNav.pendingDestinationId && !GraphNav.finalLegActive) {
+                const now = Date.now();
 
-                    GraphNav.engine.onCheckpointReached = (checkpoint, index, total) => {
-                        console.log('Reached checkpoint:', checkpoint.name);
-                    };
-
-                    GraphNav.engine.onArrived = (finalCheckpoint) => {
-                        console.log('Reached final checkpoint in graph:', finalCheckpoint.name);
-                        // Switch to final leg: from user to actual office coordinates.
-                        GraphNav.finalLegActive = true;
-                        GraphNav.finalCheckpoint = finalCheckpoint;
-                        GraphNav.pendingDestinationId = null;
-                    };
-                } catch (err) {
-                    console.error('Error starting graph navigation:', err);
+                // Current target checkpoint from engine (may be null before first plan)
+                const currentCp = GraphNav.engine.getCurrentTargetCheckpoint();
+                let dCurrent = Infinity;
+                if (currentCp) {
+                    dCurrent = haversineDistanceMeters(
+                        lat,
+                        lng,
+                        parseFloat(currentCp.latitude),
+                        parseFloat(currentCp.longitude)
+                    );
                 }
-            }
 
-            // Update graph-based engine with latest GPS (only while following checkpoints)
-            if (GraphNav.engine && GraphNav.engine.path && !GraphNav.finalLegActive) {
-                GraphNav.engine.updateUserPosition(lat, lng);
+                // Decide whether to (re)compute the shortest path from *current* position:
+                // - First time (no path yet)
+                // - Or user is far from the current target (likely took a different route)
+                const needsReplan =
+                    !GraphNav.engine.path ||
+                    (isFinite(dCurrent) && dCurrent > GraphNav.replanThreshold);
+
+                if (needsReplan && (!GraphNav.lastReplanTs || now - GraphNav.lastReplanTs > 4000)) {
+                    try {
+                        GraphNav.engine.startNavigationFromUser({
+                            userLat: lat,
+                            userLon: lng,
+                            destinationCheckpointId: GraphNav.pendingDestinationId
+                        });
+
+                        GraphNav.engine.onCheckpointReached = (checkpoint, index, total) => {
+                            console.log('Reached checkpoint:', checkpoint.name);
+                        };
+
+                        GraphNav.engine.onArrived = (finalCheckpoint) => {
+                            console.log('Reached final checkpoint in graph:', finalCheckpoint.name);
+                            // Switch to final leg: from user to actual office coordinates.
+                            GraphNav.finalLegActive = true;
+                            GraphNav.finalCheckpoint = finalCheckpoint;
+                            GraphNav.pendingDestinationId = null;
+                        };
+
+                        GraphNav.lastReplanTs = now;
+                    } catch (err) {
+                        console.error('Error (re)starting graph navigation:', err);
+                    }
+                }
+
+                // While following checkpoint path (before final leg), update per position
+                if (GraphNav.engine.path && !GraphNav.finalLegActive) {
+                    GraphNav.engine.updateUserPosition(lat, lng);
+                }
             }
 
             // Update navigation if active
