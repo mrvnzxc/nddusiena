@@ -14,6 +14,7 @@ const AppState = {
     userPosition: { x: null, y: null, floor: 1 }, // Will be set from GPS
     gpsPosition: { lat: null, lng: null }, // GPS coordinates
     heading: null,
+    headingUsable: true, // false when phone is too tilted (e.g. pointed at ground)
     isNavigating: false,
     // Local-coordinate arrival threshold for legacy direct navigation.
     // Graph-based navigation uses a 5m threshold internally.
@@ -22,7 +23,8 @@ const AppState = {
     cameraPermissionGranted: false,
     locationDetected: false,
     locationWatchId: null,
-    lastEnvironmentCheck: null
+    lastEnvironmentCheck: null,
+    distanceSamples: [] // recent distance readings for smoothing
 };
 
 // Graph-based navigation state (checkpoint graph using Supabase)
@@ -372,15 +374,24 @@ async function requestCameraPermission() {
  * Handle device orientation events
  */
 function handleDeviceOrientation(event) {
-    // Get compass heading from device orientation
-    // iOS uses different property names
-    let alpha = event.alpha; // Compass heading (0-360)
+    // Get compass heading from device orientation (0-360)
+    let alpha = event.alpha;
     
     if (alpha === null || alpha === undefined) {
         // Try alternative property names for iOS
         alpha = event.webkitCompassHeading || event.absolute || null;
     }
     
+    // Determine if phone is too tilted (e.g. pointed at ground)
+    // beta ~ 0 when flat on table, ~90 when upright in portrait
+    const beta = typeof event.beta === 'number' ? event.beta : null;
+    if (beta !== null) {
+        // Treat heading as unreliable if phone is very flat or upside-down
+        AppState.headingUsable = Math.abs(beta) > 30 && Math.abs(beta) < 120;
+    } else {
+        AppState.headingUsable = true;
+    }
+
     if (alpha !== null && alpha !== undefined) {
         // Normalize to 0-360 range
         const newHeading = normalizeAngle(alpha);
@@ -461,8 +472,9 @@ function calculateArrowRotation(heading, bearing) {
         return 0;
     }
     
-    // Calculate the difference: bearing (where to go) - heading (where you're facing)
-    let angleDiff = bearing - heading;
+    // Calculate the difference: heading (where you're facing) - bearing (where to go)
+    // Positive = target is to your LEFT, negative = to your RIGHT
+    let angleDiff = heading - bearing;
     
     // Normalize to -180 to 180 range for shortest rotation path
     // This ensures we always take the shortest turn direction
@@ -647,7 +659,7 @@ function updateNavigation() {
         bearing = calculateBearing(AppState.userPosition, destination);
     }
     
-    // Distance: use Haversine when targetLat/targetLon are known, otherwise local x/y
+    // Distance: use Haversine when targetLat/targetLon are known, otherwise local x/y (in meters)
     if (
         usingGraph &&
         targetLat !== null &&
@@ -665,8 +677,20 @@ function updateNavigation() {
         distance = calculateDistance(AppState.userPosition, destination);
     }
     
-    // Update distance display
-    updateDistanceDisplay(distance);
+    // Smooth distance for display to reduce GPS jitter near checkpoints
+    if (!Number.isNaN(distance) && isFinite(distance)) {
+        AppState.distanceSamples.push(distance);
+        if (AppState.distanceSamples.length > 5) {
+            AppState.distanceSamples.shift();
+        }
+    }
+    const smoothedDistance =
+        AppState.distanceSamples.length > 0
+            ? AppState.distanceSamples.reduce((a, b) => a + b, 0) / AppState.distanceSamples.length
+            : distance;
+
+    // Update distance display (smoothed)
+    updateDistanceDisplay(smoothedDistance);
     
     // Update destination label
     updateDestinationLabel(labelName);
@@ -723,7 +747,7 @@ function updateNavigation() {
     }
     
     // Always update arrow rotation and text instruction - MUST be accurate and responsive
-    if (AppState.heading !== null) {
+    if (AppState.heading !== null && AppState.headingUsable) {
         let targetBearing;
 
         if (
@@ -772,9 +796,9 @@ function updateNavigation() {
 
         updateNavInstruction(instruction);
     } else {
-        // Even without heading, keep arrows neutral and guide user
+        // Even without a reliable heading, keep arrows neutral and guide user
         rotateArrow(0); // Point straight initially
-        updateNavInstruction('Point your phone forward to begin navigation');
+        updateNavInstruction('Raise your phone upright and face forward for navigation');
     }
 }
 
