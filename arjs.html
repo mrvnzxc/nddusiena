@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>NDDSU AR.js Navigation (Beta)</title>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+
+    <!-- A-Frame + AR.js (location based) -->
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://unpkg.com/AR.js@3.3.2/aframe/build/aframe-ar.js"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+          sans-serif;
+      }
+
+      #hud {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        z-index: 10;
+        pointer-events: none;
+      }
+
+      .hud-top {
+        padding: 12px 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .chip {
+        pointer-events: auto;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.65);
+        color: #fff;
+        padding: 6px 12px;
+        font-size: 13px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .chip select {
+        background: transparent;
+        color: #fff;
+        border: none;
+        font-size: 13px;
+        outline: none;
+      }
+
+      .chip option {
+        color: #000;
+      }
+
+      .hud-bottom {
+        position: fixed;
+        bottom: 18%;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        pointer-events: none;
+      }
+
+      #hud-distance {
+        pointer-events: auto;
+        background: rgba(0, 0, 0, 0.85);
+        color: #00ff88;
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-size: 15px;
+        font-weight: 600;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(10px);
+      }
+
+      #hud-instruction {
+        pointer-events: auto;
+        background: rgba(0, 0, 0, 0.8);
+        color: #fff;
+        padding: 8px 16px;
+        border-radius: 999px;
+        font-size: 14px;
+        font-weight: 600;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(10px);
+        text-align: center;
+        max-width: 90vw;
+      }
+
+      #hud-status {
+        text-align: center;
+        font-size: 12px;
+        color: #e5e7eb;
+        margin-top: 4px;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- HUD overlay -->
+    <div id="hud">
+      <div class="hud-top">
+        <div class="chip">
+          <span>Destination:</span>
+          <select id="dest-select">
+            <option value="">Choose…</option>
+            <option value="Finance">Finance Office</option>
+            <option value="Registrar">Registrar Office</option>
+            <option value="Clinic">Clinic</option>
+          </select>
+        </div>
+        <div class="chip" id="hud-dest-label">No destination</div>
+      </div>
+
+      <div class="hud-bottom">
+        <div id="hud-distance">Distance: --</div>
+        <div id="hud-instruction">Select a destination to start AR</div>
+        <div id="hud-status">Waiting for GPS & compass…</div>
+      </div>
+    </div>
+
+    <!-- AR.js scene -->
+    <a-scene
+      vr-mode-ui="enabled: false"
+      embedded
+      renderer="antialias: true; alpha: true"
+      arjs="sourceType: webcam; trackingMethod: best; debugUIEnabled: false;"
+    >
+      <!-- Camera driven by GPS + compass -->
+      <a-camera
+        gps-camera="minDistance: 0;"
+        rotation-reader
+        id="arjs-camera"
+      ></a-camera>
+
+      <!-- Marker for NEXT navigation target (checkpoint or office) -->
+      <a-entity
+        id="target-marker"
+        gps-entity-place="latitude: 0; longitude: 0"
+        visible="false"
+      >
+        <!-- Simple ground marker: ring + vertical arrow -->
+        <a-ring
+          position="0 0 0"
+          radius-inner="0.8"
+          radius-outer="1.2"
+          color="#00ff88"
+          material="opacity: 0.85"
+        ></a-ring>
+        <a-cylinder
+          position="0 1 0"
+          radius="0.1"
+          height="2"
+          color="#00ff88"
+        ></a-cylinder>
+        <a-cone
+          position="0 2.2 0"
+          radius-bottom="0.4"
+          radius-top="0.0"
+          height="0.8"
+          color="#00ff88"
+        ></a-cone>
+      </a-entity>
+    </a-scene>
+
+    <script src="arjs_nav.js"></script>
+  </body>
+  </html>
+
