@@ -944,7 +944,7 @@ body {
 /* Turn-by-turn text instruction */
 .nav-instruction {
     position: fixed;
-    bottom: 18%;
+    top: 28%; /* sit just below distance-display (top: 22%) */
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.8);
