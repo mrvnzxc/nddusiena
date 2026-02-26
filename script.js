@@ -680,52 +680,9 @@ function updateNavigation() {
         return;
     }
     
-    // Environment Detection (Realistic AR features with obstacles)
-    if (AppState.heading !== null) {
-        // Check for stairs first (highest priority)
-        if (detectStairs(userFloor, destination.floor)) {
-            const floorDiff = destination.floor - userFloor;
-            const direction = floorDiff > 0 ? 'up' : 'down';
-            showEnvironmentMessage('stairs', 
-                `Go ${direction}stairs to Floor ${destination.floor}`, 
-                'bi-arrow-up-circle');
-            showFloorMarker();
-        }
-        // Check for gate (major entrance/exit)
-        else if (detectGate(AppState.userPosition, destination, distance)) {
-            showEnvironmentMessage('gate', 
-                'Gate ahead. Continue through the gate.', 
-                'bi-door-open');
-            showFloorMarker();
-        }
-        // Check for door
-        else if (detectDoor(AppState.userPosition, destination, distance)) {
-            showEnvironmentMessage('door', 
-                'Door ahead. Proceed through the door.', 
-                'bi-door-closed');
-            showFloorMarker();
-        }
-        // Check for wall
-        else if (detectWall(AppState.heading, bearing)) {
-            showEnvironmentMessage('wall', 
-                'You are facing a wall. Turn to follow the path.', 
-                'bi-exclamation-triangle');
-            showFloorMarker();
-        }
-        // Check for hallway (user is aligned with path)
-        else if (detectHallway(AppState.heading, bearing)) {
-            hideEnvironmentMessage();
-            showFloorMarker();
-        }
-        // Default: show navigation
-        else {
-            hideEnvironmentMessage();
-            showFloorMarker();
-        }
-    } else {
-        hideEnvironmentMessage();
-        showFloorMarker();
-    }
+    // Simplified: always show floor marker, no "door/gate/wall" messages
+    hideEnvironmentMessage();
+    showFloorMarker();
     
     // Calculate pathway waypoints
     let newPathway;
