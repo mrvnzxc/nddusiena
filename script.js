@@ -32,7 +32,9 @@ const GraphNav = {
     destinations: [],
     engine: null,
     activeDestination: null,   // destination row from graph (Finance, Registrar, Clinic)
-    pendingDestinationId: null // checkpoint_id to start from once GPS is ready
+    pendingDestinationId: null, // checkpoint_id to start from once GPS is ready
+    finalLegActive: false,      // true when walking last meters to office door
+    finalCheckpoint: null       // last checkpoint before office
 };
 
 // GPS to Local Coordinate Conversion Configuration
@@ -243,7 +245,7 @@ function startWatchingPosition() {
             updateARPositionDisplay();
             
             // Initialize graph-based navigation path once GPS + destination are ready
-            if (GraphNav.engine && GraphNav.pendingDestinationId && !GraphNav.engine.path) {
+            if (GraphNav.engine && GraphNav.pendingDestinationId && !GraphNav.engine.path && !GraphNav.finalLegActive) {
                 try {
                     GraphNav.engine.startNavigationFromUser({
                         userLat: lat,
@@ -256,15 +258,10 @@ function startWatchingPosition() {
                     };
 
                     GraphNav.engine.onArrived = (finalCheckpoint) => {
-                        console.log('Arrived at final checkpoint:', finalCheckpoint.name);
-                        if (GraphNav.activeDestination) {
-                            showArrivalMessage(GraphNav.activeDestination.name);
-                        } else if (AppState.selectedRoom) {
-                            showArrivalMessage(AppState.selectedRoom.display_name);
-                        }
-                        hideFloorMarker();
-                        hideEnvironmentMessage();
-                        AppState.isNavigating = false;
+                        console.log('Reached final checkpoint in graph:', finalCheckpoint.name);
+                        // Switch to final leg: from user to actual office coordinates.
+                        GraphNav.finalLegActive = true;
+                        GraphNav.finalCheckpoint = finalCheckpoint;
                         GraphNav.pendingDestinationId = null;
                     };
                 } catch (err) {
@@ -272,8 +269,8 @@ function startWatchingPosition() {
                 }
             }
 
-            // Update graph-based engine with latest GPS
-            if (GraphNav.engine && GraphNav.engine.path) {
+            // Update graph-based engine with latest GPS (only while following checkpoints)
+            if (GraphNav.engine && GraphNav.engine.path && !GraphNav.finalLegActive) {
                 GraphNav.engine.updateUserPosition(lat, lng);
             }
 
@@ -578,39 +575,43 @@ function updateNavigation() {
         return;
     }
 
-    const usingGraph =
-        GraphNav.engine &&
-        GraphNav.engine.path &&
-        GraphNav.activeDestination;
+    const checkpointTarget = GraphNav.engine
+        ? GraphNav.engine.getCurrentTargetCheckpoint()
+        : null;
+
+    const usingGraph = !!GraphNav.activeDestination;
 
     let destination;
     let userFloor = AppState.userPosition.floor || 1;
     let bearing;
     let distance;
     let labelName;
-    let currentCheckpoint = null;
+    let currentCheckpoint = checkpointTarget;
 
-    if (usingGraph) {
-        currentCheckpoint = GraphNav.engine.getCurrentTargetCheckpoint();
-        if (!currentCheckpoint) {
-            // Final checkpoint already reached; arrival callback handles UI.
-            return;
-        }
+    // Decide what the "navigation target" is:
+    // - While following checkpoints: current checkpoint
+    // - Final leg: actual office coordinates (dest_latitude/dest_longitude)
+    let targetLat = null;
+    let targetLon = null;
 
-        // Convert checkpoint GPS to local building coordinates for AR math
-        const local = currentCheckpoint.local || convertGPSToLocal(
-            parseFloat(currentCheckpoint.latitude),
-            parseFloat(currentCheckpoint.longitude)
-        );
+    if (
+        usingGraph &&
+        GraphNav.finalLegActive &&
+        GraphNav.activeDestination &&
+        GraphNav.activeDestination.dest_latitude !== null &&
+        GraphNav.activeDestination.dest_longitude !== null
+    ) {
+        // Final meters: direct to the office
+        targetLat = parseFloat(GraphNav.activeDestination.dest_latitude);
+        targetLon = parseFloat(GraphNav.activeDestination.dest_longitude);
+        const local = convertGPSToLocal(targetLat, targetLon);
+        destination = { x: local.x, y: local.y, floor: 1 };
+    } else if (usingGraph && currentCheckpoint) {
+        targetLat = parseFloat(currentCheckpoint.latitude);
+        targetLon = parseFloat(currentCheckpoint.longitude);
+        const local = currentCheckpoint.local || convertGPSToLocal(targetLat, targetLon);
         currentCheckpoint.local = local;
-
-        destination = {
-            x: local.x,
-            y: local.y,
-            floor: 1
-        };
-
-        labelName = `${GraphNav.activeDestination.name} (next: ${currentCheckpoint.name})`;
+        destination = { x: local.x, y: local.y, floor: 1 };
     } else {
         destination = {
             x: AppState.selectedRoom.x,
@@ -620,38 +621,45 @@ function updateNavigation() {
 
         labelName = AppState.selectedRoom.display_name;
     }
+
+    // High-level label: always talk about the destination office, not checkpoints
+    if (usingGraph && GraphNav.activeDestination) {
+        labelName = GraphNav.activeDestination.name;
+    }
     
-    // Calculate bearing to destination.
-    // For graph navigation, prefer GPS bearings (true compass) when available.
+    // Calculate bearing to navigation target.
+    // Prefer GPS bearings (true compass) when available.
     if (
         usingGraph &&
-        currentCheckpoint &&
+        targetLat !== null &&
+        targetLon !== null &&
         AppState.gpsPosition.lat !== null &&
         AppState.gpsPosition.lng !== null
     ) {
         bearing = bearingBetweenLatLon(
             AppState.gpsPosition.lat,
             AppState.gpsPosition.lng,
-            parseFloat(currentCheckpoint.latitude),
-            parseFloat(currentCheckpoint.longitude)
+            targetLat,
+            targetLon
         );
     } else {
         // Fallback: use local x/y bearing
         bearing = calculateBearing(AppState.userPosition, destination);
     }
     
-    // Distance: use graph Haversine if possible, otherwise local x/y distance
+    // Distance: use Haversine when targetLat/targetLon are known, otherwise local x/y
     if (
         usingGraph &&
-        currentCheckpoint &&
+        targetLat !== null &&
+        targetLon !== null &&
         AppState.gpsPosition.lat !== null &&
         AppState.gpsPosition.lng !== null
     ) {
         distance = haversineDistanceMeters(
             AppState.gpsPosition.lat,
             AppState.gpsPosition.lng,
-            parseFloat(currentCheckpoint.latitude),
-            parseFloat(currentCheckpoint.longitude)
+            targetLat,
+            targetLon
         );
     } else {
         distance = calculateDistance(AppState.userPosition, destination);
@@ -763,7 +771,8 @@ function updateNavigation() {
 
         if (
             usingGraph &&
-            currentCheckpoint &&
+            targetLat !== null &&
+            targetLon !== null &&
             AppState.gpsPosition.lat !== null &&
             AppState.gpsPosition.lng !== null
         ) {
@@ -771,8 +780,8 @@ function updateNavigation() {
             targetBearing = bearingBetweenLatLon(
                 AppState.gpsPosition.lat,
                 AppState.gpsPosition.lng,
-                parseFloat(currentCheckpoint.latitude),
-                parseFloat(currentCheckpoint.longitude)
+                targetLat,
+                targetLon
             );
         } else {
             // Fallback: bearing in local coordinate space
@@ -798,8 +807,8 @@ function updateNavigation() {
             instruction = 'Turn around';
         }
 
-        if (usingGraph && currentCheckpoint) {
-            instruction += ` towards ${currentCheckpoint.name} checkpoint`;
+        if (usingGraph && GraphNav.activeDestination) {
+            instruction += ` towards ${GraphNav.activeDestination.name}`;
         } else if (AppState.selectedRoom) {
             instruction += ` towards ${AppState.selectedRoom.display_name}`;
         }
@@ -1565,14 +1574,37 @@ class NavigationEngineGraph {
         const target = this.getCurrentTargetCheckpoint();
         if (!target) return;
 
-        const d = haversineDistanceMeters(
+        const dCurrent = haversineDistanceMeters(
             lat,
             lon,
             parseFloat(target.latitude),
             parseFloat(target.longitude)
         );
 
-        if (d < this.arrivalRadiusMeters) {
+        // Auto-skip: if user is clearly closer to the next checkpoint than
+        // the current one, advance to keep navigation feeling natural.
+        let shouldAdvance = dCurrent < this.arrivalRadiusMeters;
+
+        const nextIndex = this.currentIndex + 1;
+        const hasNext = this.path && nextIndex < this.path.length;
+        if (!shouldAdvance && hasNext) {
+            const nextId = this.path[nextIndex];
+            const nextCp = this.checkpointById.get(nextId);
+            if (nextCp) {
+                const dNext = haversineDistanceMeters(
+                    lat,
+                    lon,
+                    parseFloat(nextCp.latitude),
+                    parseFloat(nextCp.longitude)
+                );
+                const SKIP_MARGIN = 10; // meters
+                if (dNext + SKIP_MARGIN < dCurrent) {
+                    shouldAdvance = true;
+                }
+            }
+        }
+
+        if (shouldAdvance) {
             const reachedIndex = this.currentIndex;
             this.currentIndex += 1;
 
