@@ -588,9 +588,10 @@ function updateNavigation() {
     let bearing;
     let distance;
     let labelName;
+    let currentCheckpoint = null;
 
     if (usingGraph) {
-        const currentCheckpoint = GraphNav.engine.getCurrentTargetCheckpoint();
+        currentCheckpoint = GraphNav.engine.getCurrentTargetCheckpoint();
         if (!currentCheckpoint) {
             // Final checkpoint already reached; arrival callback handles UI.
             return;
@@ -620,11 +621,41 @@ function updateNavigation() {
         labelName = AppState.selectedRoom.display_name;
     }
     
-    // Calculate bearing to destination (local-coordinate equivalent)
-    bearing = calculateBearing(AppState.userPosition, destination);
+    // Calculate bearing to destination.
+    // For graph navigation, prefer GPS bearings (true compass) when available.
+    if (
+        usingGraph &&
+        currentCheckpoint &&
+        AppState.gpsPosition.lat !== null &&
+        AppState.gpsPosition.lng !== null
+    ) {
+        bearing = bearingBetweenLatLon(
+            AppState.gpsPosition.lat,
+            AppState.gpsPosition.lng,
+            parseFloat(currentCheckpoint.latitude),
+            parseFloat(currentCheckpoint.longitude)
+        );
+    } else {
+        // Fallback: use local x/y bearing
+        bearing = calculateBearing(AppState.userPosition, destination);
+    }
     
-    // Calculate distance in meters (local coordinate space)
-    distance = calculateDistance(AppState.userPosition, destination);
+    // Distance: use graph Haversine if possible, otherwise local x/y distance
+    if (
+        usingGraph &&
+        currentCheckpoint &&
+        AppState.gpsPosition.lat !== null &&
+        AppState.gpsPosition.lng !== null
+    ) {
+        distance = haversineDistanceMeters(
+            AppState.gpsPosition.lat,
+            AppState.gpsPosition.lng,
+            parseFloat(currentCheckpoint.latitude),
+            parseFloat(currentCheckpoint.longitude)
+        );
+    } else {
+        distance = calculateDistance(AppState.userPosition, destination);
+    }
     
     // Update distance display
     updateDistanceDisplay(distance);
@@ -726,19 +757,58 @@ function updateNavigation() {
         createArrowPath(currentPathway);
     }
     
-    // Always update arrow rotation - MUST be accurate and responsive
+    // Always update arrow rotation and text instruction - MUST be accurate and responsive
     if (AppState.heading !== null) {
-        // Calculate arrow rotation based on first waypoint or destination
-        const targetPoint = currentPathway.length > 0 ? currentPathway[0] : destination;
-        const targetBearing = calculateBearing(AppState.userPosition, targetPoint);
+        let targetBearing;
+
+        if (
+            usingGraph &&
+            currentCheckpoint &&
+            AppState.gpsPosition.lat !== null &&
+            AppState.gpsPosition.lng !== null
+        ) {
+            // Use true compass bearing from GPS to current checkpoint
+            targetBearing = bearingBetweenLatLon(
+                AppState.gpsPosition.lat,
+                AppState.gpsPosition.lng,
+                parseFloat(currentCheckpoint.latitude),
+                parseFloat(currentCheckpoint.longitude)
+            );
+        } else {
+            // Fallback: bearing in local coordinate space
+            const targetPoint = currentPathway.length > 0 ? currentPathway[0] : destination;
+            targetBearing = calculateBearing(AppState.userPosition, targetPoint);
+        }
+
         const arrowRotation = calculateArrowRotation(AppState.heading, targetBearing);
         
         // Rotate arrow IMMEDIATELY with accurate calculation
-        // The arrow should point exactly where you need to turn
         rotateArrow(arrowRotation);
+
+        // Turn-by-turn text instruction
+        const absDiff = Math.abs(arrowRotation);
+        let instruction;
+        if (absDiff < 15) {
+            instruction = 'Go straight';
+        } else if (absDiff < 45) {
+            instruction = arrowRotation > 0 ? 'Slightly turn right' : 'Slightly turn left';
+        } else if (absDiff < 135) {
+            instruction = arrowRotation > 0 ? 'Turn right' : 'Turn left';
+        } else {
+            instruction = 'Turn around';
+        }
+
+        if (usingGraph && currentCheckpoint) {
+            instruction += ` towards ${currentCheckpoint.name} checkpoint`;
+        } else if (AppState.selectedRoom) {
+            instruction += ` towards ${AppState.selectedRoom.display_name}`;
+        }
+
+        updateNavInstruction(instruction);
     } else {
-        // Even without heading, point arrows toward destination
+        // Even without heading, keep arrows neutral and guide user
         rotateArrow(0); // Point straight initially
+        updateNavInstruction('Point your phone forward to begin navigation');
     }
 }
 
@@ -987,6 +1057,20 @@ function showArrivalMessage(roomName) {
 function hideArrivalMessage() {
     const arrivalMessage = document.getElementById('arrival-message');
     arrivalMessage.classList.add('hidden');
+}
+
+/**
+ * Update on-screen navigation instruction text
+ */
+function updateNavInstruction(text) {
+    const el = document.getElementById('nav-instruction');
+    if (!el) return;
+    if (!text) {
+        el.classList.add('hidden');
+    } else {
+        el.textContent = text;
+        el.classList.remove('hidden');
+    }
 }
 
 /**
@@ -1324,6 +1408,19 @@ function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
             Math.sin(dLon / 2) ** 2;
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return EARTH_RADIUS_M * c;
+}
+
+// Bearing between two GPS coordinates in degrees (0° = North, clockwise)
+function bearingBetweenLatLon(lat1, lon1, lat2, lon2) {
+    const φ1 = toRad(lat1);
+    const φ2 = toRad(lat2);
+    const Δλ = toRad(lon2 - lon1);
+    const y = Math.sin(Δλ) * Math.cos(φ2);
+    const x =
+        Math.cos(φ1) * Math.sin(φ2) -
+        Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+    const θ = Math.atan2(y, x) * (180 / Math.PI);
+    return normalizeAngle(θ);
 }
 
 function findNearestCheckpointGraph(lat, lon, checkpoints) {
