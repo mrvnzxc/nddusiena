@@ -20,20 +20,14 @@ insert into public.checkpoints (name, latitude, longitude) values
 on conflict (name) do nothing;
 
 
--- Bidirectional edges based on campus flow
 with edge_pairs as (
-  -- parking / left side loop
+  -- parking and approach to hallways
   select 'parking_area'::text          as from_name, 'parking_side_entrance'::text as to_name union all
   select 'parking_side_entrance',      'parking_area'                              union all
 
-  select 'parking_side_entrance',      'left_corner'                               union all
-  select 'left_corner',                'parking_side_entrance'                     union all
-
-  select 'left_corner',                'left_building_exit'                        union all
-  select 'left_building_exit',         'left_corner'                               union all
-
-  select 'left_building_exit',         'center_statue'                             union all
-  select 'center_statue',              'left_building_exit'                        union all
+  -- from parking side, go directly toward hallway 1 (then hallway 2)
+  select 'parking_side_entrance',      'hallway_1'                                 union all
+  select 'hallway_1',                  'parking_side_entrance'                     union all
 
   -- center to hallways / right building
   select 'center_statue',              'hallway_2'                                 union all

@@ -15,6 +15,8 @@ const AppState = {
     gpsPosition: { lat: null, lng: null }, // GPS coordinates
     heading: null,
     headingUsable: true, // false when phone is too tilted (e.g. pointed at ground)
+    headingSamples: [],  // recent headings for stability check
+    headingStable: false, // becomes true after a few consistent readings
     isNavigating: false,
     // Local-coordinate arrival threshold for legacy direct navigation.
     // Graph-based navigation uses a 5m threshold internally.
@@ -427,14 +429,28 @@ function handleDeviceOrientation(event) {
         
         // Update heading immediately
         AppState.heading = newHeading;
+
+        // Track recent headings to detect when compass is stable
+        AppState.headingSamples.push(newHeading);
+        if (AppState.headingSamples.length > 10) {
+            AppState.headingSamples.shift();
+        }
+        if (AppState.headingSamples.length >= 4) {
+            const minH = Math.min(...AppState.headingSamples);
+            const maxH = Math.max(...AppState.headingSamples);
+            AppState.headingStable = (maxH - minH) <= 20; // within 20 degrees window
+        } else {
+            AppState.headingStable = false;
+        }
+
         const headingDisplay = document.getElementById('heading-value');
         if (headingDisplay) {
             headingDisplay.textContent = Math.round(AppState.heading);
         }
         
         // Update navigation IMMEDIATELY for instant arrow rotation
-        // No delay - arrows must respond instantly to phone rotation
-        if (AppState.isNavigating && AppState.selectedRoom) {
+        // Only when heading is considered usable (tilt) and reasonably stable
+        if (AppState.isNavigating && AppState.selectedRoom && AppState.headingUsable && AppState.headingStable) {
             updateNavigation();
         }
     }
@@ -721,6 +737,16 @@ function updateNavigation() {
     // Update distance display (smoothed)
     updateDistanceDisplay(smoothedDistance);
     
+    // Handle arrival on final leg for graph navigation (office coordinates)
+    if (usingGraph && GraphNav.finalLegActive && smoothedDistance < 25 && GraphNav.activeDestination) {
+        showArrivalMessage(GraphNav.activeDestination.name);
+        hideFloorMarker();
+        hideEnvironmentMessage();
+        AppState.isNavigating = false;
+        GraphNav.finalLegActive = false;
+        return;
+    }
+
     // Update destination label
     updateDestinationLabel(labelName);
     
@@ -776,7 +802,7 @@ function updateNavigation() {
     }
     
     // Always update arrow rotation and text instruction - MUST be accurate and responsive
-    if (AppState.heading !== null && AppState.headingUsable) {
+    if (AppState.heading !== null && AppState.headingUsable && AppState.headingStable) {
         let targetBearing;
 
         if (
@@ -825,9 +851,9 @@ function updateNavigation() {
 
         updateNavInstruction(instruction);
     } else {
-        // Even without a reliable heading, keep arrows neutral and guide user
+        // Even without a reliable, stable heading, keep arrows neutral and guide user
         rotateArrow(0); // Point straight initially
-        updateNavInstruction('Raise your phone upright and face forward for navigation');
+        updateNavInstruction('Hold your phone upright and steady to calibrate direction');
     }
 }
 
