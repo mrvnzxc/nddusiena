@@ -55,9 +55,13 @@ const BUILDING_CONFIG = {
     metersPerDegreeLng: 111000 // Will be adjusted based on latitude
 };
 
-// API Configuration
-const API_BASE_URL = 'api.php';
-const GRAPH_API_ACTION = 'get_nav_graph';
+// Supabase Configuration (no PHP - direct client for Vercel/static hosting)
+const SUPABASE_URL = 'https://pllmhqlssdmfijqagkxi.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsbG1ocWxzc2RtZmlqcWFna3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NTEwOTEsImV4cCI6MjA4NzQyNzA5MX0.3QUWRVZo8EiyhsuUO-OFA2rrN51FxjL6or8Atp7htTE';
+
+const supabase = typeof window !== 'undefined' && window.supabase
+    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    : null;
 
 // WebXR state - world-anchored AR on supported Android
 const WebXRArrows = {
@@ -460,7 +464,8 @@ function startWatchingPosition() {
 
                 // While following checkpoint path (before final leg), update per position
                 if (GraphNav.engine.currentPath.length && !GraphNav.finalLegActive) {
-                    GraphNav.engine.updateUserPosition(lat, lng);
+                    const gpsAccuracy = position.coords.accuracy;
+                    GraphNav.engine.updateUserPosition(lat, lng, gpsAccuracy);
                 }
             }
 
@@ -1422,34 +1427,58 @@ function updateNavInstruction(text) {
 }
 
 /**
- * Load rooms from database via API
+ * Load rooms from Supabase destinations table (no PHP)
  */
 async function loadRooms() {
     try {
-        const response = await fetch(`${API_BASE_URL}?action=get_rooms`);
-        const data = await response.json();
-        
-        if (data.success && data.rooms) {
-            AppState.rooms = data.rooms;
-            renderRoomsList();
-            updateStatus('Rooms loaded', 'success');
-        } else {
-            throw new Error(data.error || 'Failed to load rooms');
+        if (!supabase) {
+            throw new Error('Supabase client not available');
         }
+        const { data: dests, error: destErr } = await supabase
+            .from('destinations')
+            .select('id,name,checkpoint_id,dest_latitude,dest_longitude');
+        if (destErr) throw destErr;
+        const cpIds = [...new Set((dests || []).map(d => d.checkpoint_id).filter(Boolean))];
+        let cpMap = {};
+        if (cpIds.length > 0) {
+            const { data: cps, error: cpErr } = await supabase
+                .from('checkpoints')
+                .select('id,latitude,longitude')
+                .in('id', cpIds);
+            if (!cpErr && cps) cpMap = Object.fromEntries(cps.map(c => [c.id, c]));
+        }
+        const rooms = (dests || []).map(d => {
+            const lat = d.dest_latitude ?? cpMap[d.checkpoint_id]?.latitude;
+            const lng = d.dest_longitude ?? cpMap[d.checkpoint_id]?.longitude;
+            let x = 15, y = 25;
+            if (lat != null && lng != null) {
+                const local = convertGPSToLocal(lat, lng);
+                x = local.x;
+                y = local.y;
+            }
+            return {
+                name: (d.name || '').toLowerCase().replace(/\s+/g, '_'),
+                display_name: d.name || 'Room',
+                x, y, floor: 1
+            };
+        });
+        AppState.rooms = rooms.length > 0 ? rooms : getFallbackRooms();
+        renderRoomsList();
+        updateStatus('Rooms loaded', 'success');
     } catch (error) {
         console.error('Error loading rooms:', error);
         updateStatus('Failed to load rooms', 'error');
-        
-        // Fallback: Use hardcoded rooms if API fails.
-        // Guidance is intentionally omitted so it never appears
-        // when Supabase/PHＰ is unavailable (e.g. static hosting).
-        AppState.rooms = [
-            { name: 'finance', display_name: 'Finance', x: 15.0, y: 25.0, floor: 1 },
-            { name: 'registrar', display_name: 'Registrar', x: 5.0, y: 35.0, floor: 1 },
-            { name: 'clinic', display_name: 'Clinic', x: 12.0, y: 18.0, floor: 1 }
-        ];
+        AppState.rooms = getFallbackRooms();
         renderRoomsList();
     }
+}
+
+function getFallbackRooms() {
+    return [
+        { name: 'finance', display_name: 'Finance', x: 15.0, y: 25.0, floor: 1 },
+        { name: 'registrar', display_name: 'Registrar', x: 5.0, y: 35.0, floor: 1 },
+        { name: 'clinic', display_name: 'Clinic', x: 12.0, y: 18.0, floor: 1 }
+    ];
 }
 
 /**
@@ -1946,7 +1975,7 @@ class NavigationEngineGraph {
         return true;
     }
 
-    updateUserPosition(lat, lon) {
+    updateUserPosition(lat, lon, gpsAccuracyMeters) {
         const nextCheckpoint = this.currentPath[this.currentPathIndex + 1];
         if (nextCheckpoint === undefined) return;
 
@@ -1960,9 +1989,15 @@ class NavigationEngineGraph {
             parseFloat(nextCp.longitude)
         );
 
+        const effectiveRadius = Math.max(
+            this.arrivalRadiusMeters,
+            gpsAccuracyMeters != null ? gpsAccuracyMeters : this.arrivalRadiusMeters,
+            10
+        );
+
         console.log('NEXT TARGET:', nextCp.name);
 
-        if (distanceToNextCheckpoint < this.arrivalRadiusMeters) {
+        if (distanceToNextCheckpoint < effectiveRadius) {
             this.currentPathIndex += 1;
             console.log('CURRENT INDEX:', this.currentPathIndex);
 
@@ -1981,21 +2016,26 @@ class NavigationEngineGraph {
 }
 
 /**
- * Load navigation graph (checkpoints, edges, destinations) from API/Supabase.
+ * Load navigation graph (checkpoints, edges, destinations) from Supabase (no PHP)
  */
 async function loadNavigationGraph() {
     try {
-        const response = await fetch(`${API_BASE_URL}?action=${GRAPH_API_ACTION}`);
-        const data = await response.json();
-
-        if (!data || !data.success) {
-            console.warn('Graph navigation data not available:', data && data.error);
+        if (!supabase) {
+            console.warn('Supabase client not available, graph navigation disabled');
             return;
         }
+        const [cpRes, edgeRes, destRes] = await Promise.all([
+            supabase.from('checkpoints').select('id,name,latitude,longitude'),
+            supabase.from('edges').select('id,from_checkpoint,to_checkpoint,distance'),
+            supabase.from('destinations').select('id,name,checkpoint_id,dest_latitude,dest_longitude')
+        ]);
+        if (cpRes.error) throw cpRes.error;
+        if (edgeRes.error) throw edgeRes.error;
+        if (destRes.error) throw destRes.error;
 
-        GraphNav.checkpoints = data.checkpoints || [];
-        GraphNav.edges = data.edges || [];
-        GraphNav.destinations = data.destinations || [];
+        GraphNav.checkpoints = cpRes.data || [];
+        GraphNav.edges = edgeRes.data || [];
+        GraphNav.destinations = destRes.data || [];
 
         // Precompute local coordinates for each checkpoint for AR math
         GraphNav.checkpoints.forEach(cp => {
