@@ -782,13 +782,24 @@ function updateNavigation() {
             }
         }
     }
-    
-    // Only recreate arrows if pathway changed significantly
-    if (pathwayChanged || currentPathway.length === 0) {
-        currentPathway = newPathway;
-        createArrowPath(currentPathway);
+    currentPathway = newPathway;
+
+    // Graph checkpoint phase: ground-projected path arrows (Google Maps Live View style)
+    const usePathArrows = usingGraph && !GraphNav.finalLegActive && GraphNav.engine &&
+        AppState.gpsPosition.lat != null && AppState.gpsPosition.lng != null &&
+        AppState.heading !== null && AppState.headingUsable && AppState.headingStable;
+
+    const arrowPathEl = document.getElementById('arrow-path');
+    if (usePathArrows) {
+        renderPathArrows(AppState.gpsPosition.lat, AppState.gpsPosition.lng, AppState.heading);
+    } else {
+        // Legacy: single rotated arrow path or final-leg/non-graph mode
+        const hasPathArrows = arrowPathEl?.querySelector('.ar-path-arrow');
+        if (pathwayChanged || currentPathway.length === 0 || hasPathArrows) {
+            createArrowPath(currentPathway);
+        }
     }
-    
+
     // Always update arrow rotation and text instruction - MUST be accurate and responsive
     if (AppState.heading !== null && AppState.headingUsable && AppState.headingStable) {
         let targetBearing;
@@ -823,8 +834,10 @@ function updateNavigation() {
 
         const arrowRotation = targetBearing !== null ? calculateArrowRotation(AppState.heading, targetBearing) : 0;
         
-        // Rotate arrow IMMEDIATELY with accurate calculation
-        rotateArrow(arrowRotation);
+        // Rotate arrow only when NOT using ground-projected path arrows
+        if (!usePathArrows) {
+            rotateArrow(arrowRotation);
+        }
 
         // Turn-by-turn text instruction
         const absDiff = Math.abs(arrowRotation);
@@ -863,6 +876,119 @@ function updateDistanceDisplay(distance) {
 
 // Store current pathway waypoints
 let currentPathway = [];
+
+// Ground-projected path arrows: smoothed positions for anti-jitter
+const pathArrowSmoothState = {
+    positions: [],  // [{ x, y }] per arrow index
+    lerpFactor: 0.25
+};
+
+/**
+ * Render multiple ground-projected arrows forming a path line (Google Maps Live View style).
+ * Uses GraphNav.engine.getRemainingPathCheckpoints(), bearingBetweenLatLon, and device heading.
+ * Arrows are positioned with translateX/translateY only; no container rotation.
+ */
+function renderPathArrows(userLat, userLon, heading) {
+    const arrowPath = document.getElementById('arrow-path');
+    const pathContainer = document.getElementById('ar-path-container');
+    if (!arrowPath || !pathContainer || !GraphNav.engine) return;
+
+    const remaining = GraphNav.engine.getRemainingPathCheckpoints() || [];
+    const maxArrows = 5;
+    const checkpoints = remaining.slice(0, maxArrows);
+    if (checkpoints.length === 0) {
+        arrowPath.querySelectorAll('.ar-path-arrow').forEach(el => { el.style.visibility = 'hidden'; });
+        return;
+    }
+
+    const containerWidth = pathContainer.offsetWidth || window.innerWidth;
+    const containerHeight = pathContainer.offsetHeight || window.innerHeight * 0.6;
+    const centerX = containerWidth / 2;
+    const maxXOffset = containerWidth * 0.4;
+    const baseY = containerHeight - 40;
+    const ySpacing = 55;
+
+    // No rotation on container - each arrow positioned independently
+    arrowPath.style.transform = 'none';
+
+    // Remove legacy ar-arrow-marker elements when using path arrows
+    arrowPath.querySelectorAll('.ar-arrow-marker').forEach(el => el.remove());
+
+    // Ensure we have enough arrow elements
+    let arrows = arrowPath.querySelectorAll('.ar-path-arrow');
+    for (let i = arrows.length; i < checkpoints.length; i++) {
+        const marker = document.createElement('div');
+        marker.className = 'ar-path-arrow';
+        marker.style.position = 'absolute';
+        marker.style.left = '50%';
+        marker.style.bottom = '0';
+        marker.style.transformOrigin = 'center bottom';
+        marker.style.willChange = 'transform';
+        marker.style.pointerEvents = 'none';
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 100 100');
+        svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+        const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        pathEl.setAttribute('d', 'M50 15 L75 55 L60 55 L60 80 L40 80 L40 55 L25 55 Z');
+        pathEl.setAttribute('class', 'arrow-shape');
+        pathEl.setAttribute('fill', '#00ff88');
+        pathEl.setAttribute('stroke', '#00cc6a');
+        pathEl.setAttribute('stroke-width', '2');
+        svg.appendChild(pathEl);
+        marker.appendChild(svg);
+        arrowPath.appendChild(marker);
+    }
+    arrows = arrowPath.querySelectorAll('.ar-path-arrow');
+
+    // Hide excess arrows
+    for (let i = checkpoints.length; i < arrows.length; i++) {
+        arrows[i].style.visibility = 'hidden';
+    }
+
+    const userLatF = parseFloat(userLat);
+    const userLonF = parseFloat(userLon);
+    const headingNorm = ((heading % 360) + 360) % 360;
+
+    for (let i = 0; i < checkpoints.length; i++) {
+        const cp = checkpoints[i];
+        const cpLat = parseFloat(cp.latitude);
+        const cpLon = parseFloat(cp.longitude);
+
+        const bearing = bearingBetweenLatLon(userLatF, userLonF, cpLat, cpLon);
+        let relativeAngle = bearing - headingNorm;
+        while (relativeAngle > 180) relativeAngle -= 360;
+        while (relativeAngle < -180) relativeAngle += 360;
+
+        const distanceM = haversineDistanceMeters(userLatF, userLonF, cpLat, cpLon);
+
+        if (typeof console !== 'undefined' && console.log) {
+            console.log(`PathArrow[${i}] checkpoint=${cp.name} bearing=${bearing.toFixed(1)} heading=${headingNorm.toFixed(1)} relativeAngle=${relativeAngle.toFixed(1)} dist=${distanceM.toFixed(1)}m`);
+        }
+
+        const isVisible = relativeAngle >= -90 && relativeAngle <= 90;
+
+        const targetX = isVisible ? (relativeAngle / 90) * maxXOffset : 0;
+        const targetY = -(i * ySpacing + Math.min(distanceM * 1.5, 80));
+
+        if (!pathArrowSmoothState.positions[i]) {
+            pathArrowSmoothState.positions[i] = { x: targetX, y: targetY };
+        }
+        const state = pathArrowSmoothState.positions[i];
+        const factor = pathArrowSmoothState.lerpFactor;
+        state.x += (targetX - state.x) * factor;
+        state.y += (targetY - state.y) * factor;
+
+        const scale = 1 - (i * 0.12);
+        const opacity = Math.max(0.5, 0.95 - i * 0.15);
+
+        const marker = arrows[i];
+        marker.style.visibility = isVisible ? 'visible' : 'hidden';
+        marker.style.opacity = isVisible ? opacity : '0';
+        marker.style.transform = `translateX(calc(-50% + ${state.x}px)) translateY(${state.y}px) rotateZ(${relativeAngle}deg) rotateX(60deg) scale(${scale})`;
+    }
+}
 
 /**
  * Create AR arrow path with multiple arrows following the pathway
