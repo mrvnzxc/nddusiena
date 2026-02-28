@@ -763,6 +763,22 @@ body {
     stroke-width: 2;
 }
 
+/* Ground shadow for path arrows - anchored to floor */
+.ar-path-arrow::before {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 18px;
+    background: radial-gradient(ellipse, rgba(0, 255, 136, 0.35) 0%, rgba(0, 255, 136, 0.08) 50%, transparent 100%);
+    border-radius: 50%;
+    filter: blur(8px);
+    z-index: -1;
+    opacity: 0.9;
+}
+
 /* 3D Floor Effect for Arrows - Realistic ground shadow */
 .ar-arrow-marker::before {
     content: '';

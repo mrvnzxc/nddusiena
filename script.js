@@ -785,13 +785,23 @@ function updateNavigation() {
     currentPathway = newPathway;
 
     // Graph checkpoint phase: ground-projected path arrows (Google Maps Live View style)
+    // Use headingUsable only (not headingStable) so path arrows show immediately - they have their own smoothing
+    const hasGps = AppState.gpsPosition.lat != null && AppState.gpsPosition.lng != null;
+    const hasManualPos = AppState.userPosition.x != null && AppState.userPosition.y != null;
     const usePathArrows = usingGraph && !GraphNav.finalLegActive && GraphNav.engine &&
-        AppState.gpsPosition.lat != null && AppState.gpsPosition.lng != null &&
-        AppState.heading !== null && AppState.headingUsable && AppState.headingStable;
+        (hasGps || hasManualPos) &&
+        AppState.heading !== null && AppState.headingUsable;
 
     const arrowPathEl = document.getElementById('arrow-path');
     if (usePathArrows) {
-        renderPathArrows(AppState.gpsPosition.lat, AppState.gpsPosition.lng, AppState.heading);
+        let pathUserLat = AppState.gpsPosition.lat;
+        let pathUserLon = AppState.gpsPosition.lng;
+        if (pathUserLat == null || pathUserLon == null) {
+            const m = BUILDING_CONFIG.metersPerDegreeLng * Math.cos(BUILDING_CONFIG.originLat * Math.PI / 180);
+            pathUserLat = BUILDING_CONFIG.originLat + (AppState.userPosition.y || 0) / BUILDING_CONFIG.metersPerDegreeLat;
+            pathUserLon = BUILDING_CONFIG.originLng + (AppState.userPosition.x || 0) / m;
+        }
+        renderPathArrows(pathUserLat, pathUserLon, AppState.heading);
     } else {
         // Legacy: single rotated arrow path or final-leg/non-graph mode
         const hasPathArrows = arrowPathEl?.querySelector('.ar-path-arrow');
