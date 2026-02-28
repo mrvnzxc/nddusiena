@@ -59,7 +59,7 @@ const BUILDING_CONFIG = {
 const SUPABASE_URL = 'https://pllmhqlssdmfijqagkxi.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsbG1ocWxzc2RtZmlqcWFna3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NTEwOTEsImV4cCI6MjA4NzQyNzA5MX0.3QUWRVZo8EiyhsuUO-OFA2rrN51FxjL6or8Atp7htTE';
 
-const supabase = typeof window !== 'undefined' && window.supabase
+const supabaseClient = typeof window !== 'undefined' && window.supabase
     ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     : null;
 
@@ -1431,17 +1431,17 @@ function updateNavInstruction(text) {
  */
 async function loadRooms() {
     try {
-        if (!supabase) {
+        if (!supabaseClient) {
             throw new Error('Supabase client not available');
         }
-        const { data: dests, error: destErr } = await supabase
+        const { data: dests, error: destErr } = await supabaseClient
             .from('destinations')
             .select('id,name,checkpoint_id,dest_latitude,dest_longitude');
         if (destErr) throw destErr;
         const cpIds = [...new Set((dests || []).map(d => d.checkpoint_id).filter(Boolean))];
         let cpMap = {};
         if (cpIds.length > 0) {
-            const { data: cps, error: cpErr } = await supabase
+            const { data: cps, error: cpErr } = await supabaseClient
                 .from('checkpoints')
                 .select('id,latitude,longitude')
                 .in('id', cpIds);
@@ -2020,14 +2020,14 @@ class NavigationEngineGraph {
  */
 async function loadNavigationGraph() {
     try {
-        if (!supabase) {
+        if (!supabaseClient) {
             console.warn('Supabase client not available, graph navigation disabled');
             return;
         }
         const [cpRes, edgeRes, destRes] = await Promise.all([
-            supabase.from('checkpoints').select('id,name,latitude,longitude'),
-            supabase.from('edges').select('id,from_checkpoint,to_checkpoint,distance'),
-            supabase.from('destinations').select('id,name,checkpoint_id,dest_latitude,dest_longitude')
+            supabaseClient.from('checkpoints').select('id,name,latitude,longitude'),
+            supabaseClient.from('edges').select('id,from_checkpoint,to_checkpoint,distance'),
+            supabaseClient.from('destinations').select('id,name,checkpoint_id,dest_latitude,dest_longitude')
         ]);
         if (cpRes.error) throw cpRes.error;
         if (edgeRes.error) throw edgeRes.error;
