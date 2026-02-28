@@ -894,9 +894,8 @@ const pathArrowSmoothState = {
 };
 
 /**
- * Render multiple ground-projected arrows forming a path line (Google Maps Live View style).
- * Uses GraphNav.engine.getRemainingPathCheckpoints(), bearingBetweenLatLon, and device heading.
- * Arrows are positioned with translateX/translateY only; no container rotation.
+ * Render ground-anchored path arrows in the lower screen (65%-90% height).
+ * Arrows use horizontal placement for direction; no rotateZ. transform-origin: 50% 100%.
  */
 function renderPathArrows(userLat, userLon, heading) {
     const arrowPath = document.getElementById('arrow-path');
@@ -911,28 +910,21 @@ function renderPathArrows(userLat, userLon, heading) {
         return;
     }
 
-    const containerWidth = pathContainer.offsetWidth || window.innerWidth;
-    const containerHeight = pathContainer.offsetHeight || window.innerHeight * 0.6;
-    const centerX = containerWidth / 2;
-    const maxXOffset = containerWidth * 0.4;
-    const baseY = containerHeight - 40;
-    const ySpacing = 55;
+    const screenWidth = pathContainer.offsetWidth || window.innerWidth;
+    const screenHeight = pathContainer.offsetHeight || window.innerHeight;
+    const centerX = screenWidth / 2;
+    const maxXOffset = screenWidth * 0.35;
+    const arrowHeight = 70;
 
-    // No rotation on container - each arrow positioned independently
     arrowPath.style.transform = 'none';
-
-    // Remove legacy ar-arrow-marker elements when using path arrows
     arrowPath.querySelectorAll('.ar-arrow-marker').forEach(el => el.remove());
 
-    // Ensure we have enough arrow elements
     let arrows = arrowPath.querySelectorAll('.ar-path-arrow');
     for (let i = arrows.length; i < checkpoints.length; i++) {
         const marker = document.createElement('div');
         marker.className = 'ar-path-arrow';
         marker.style.position = 'absolute';
-        marker.style.left = '50%';
-        marker.style.bottom = '0';
-        marker.style.transformOrigin = 'center bottom';
+        marker.style.transformOrigin = '50% 100%';
         marker.style.willChange = 'transform';
         marker.style.pointerEvents = 'none';
 
@@ -952,7 +944,6 @@ function renderPathArrows(userLat, userLon, heading) {
     }
     arrows = arrowPath.querySelectorAll('.ar-path-arrow');
 
-    // Hide excess arrows
     for (let i = checkpoints.length; i < arrows.length; i++) {
         arrows[i].style.visibility = 'hidden';
     }
@@ -971,16 +962,21 @@ function renderPathArrows(userLat, userLon, heading) {
         while (relativeAngle > 180) relativeAngle -= 360;
         while (relativeAngle < -180) relativeAngle += 360;
 
-        const distanceM = haversineDistanceMeters(userLatF, userLonF, cpLat, cpLon);
+        const distanceMeters = haversineDistanceMeters(userLatF, userLonF, cpLat, cpLon);
+
+        const normalizedDistance = Math.max(0, Math.min(1, distanceMeters / 40));
+        const screenY = screenHeight * (0.9 - normalizedDistance * 0.25);
+        const scale = 1.0 - normalizedDistance * 0.5;
+        const screenX = centerX + (relativeAngle / 90) * maxXOffset;
 
         if (typeof console !== 'undefined' && console.log) {
-            console.log(`PathArrow[${i}] checkpoint=${cp.name} bearing=${bearing.toFixed(1)} heading=${headingNorm.toFixed(1)} relativeAngle=${relativeAngle.toFixed(1)} dist=${distanceM.toFixed(1)}m`);
+            console.log(`PathArrow[${i}] screenX=${screenX.toFixed(0)} screenY=${screenY.toFixed(0)} distanceMeters=${distanceMeters.toFixed(1)} relativeAngle=${relativeAngle.toFixed(1)}`);
         }
 
         const isVisible = relativeAngle >= -90 && relativeAngle <= 90;
 
-        const targetX = isVisible ? (relativeAngle / 90) * maxXOffset : 0;
-        const targetY = -(i * ySpacing + Math.min(distanceM * 1.5, 80));
+        const targetX = isVisible ? screenX : centerX;
+        const targetY = isVisible ? screenY : screenHeight * 0.85;
 
         if (!pathArrowSmoothState.positions[i]) {
             pathArrowSmoothState.positions[i] = { x: targetX, y: targetY };
@@ -990,13 +986,14 @@ function renderPathArrows(userLat, userLon, heading) {
         state.x += (targetX - state.x) * factor;
         state.y += (targetY - state.y) * factor;
 
-        const scale = 1 - (i * 0.12);
         const opacity = Math.max(0.5, 0.95 - i * 0.15);
 
         const marker = arrows[i];
         marker.style.visibility = isVisible ? 'visible' : 'hidden';
         marker.style.opacity = isVisible ? opacity : '0';
-        marker.style.transform = `translateX(calc(-50% + ${state.x}px)) translateY(${state.y}px) rotateZ(${relativeAngle}deg) rotateX(60deg) scale(${scale})`;
+        marker.style.left = state.x + 'px';
+        marker.style.top = (state.y - arrowHeight) + 'px';
+        marker.style.transform = `translateX(-50%) rotateX(65deg) scale(${scale})`;
     }
 }
 

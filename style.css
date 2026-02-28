@@ -650,38 +650,32 @@ body {
     pointer-events: none;
 }
 
-/* AR Path Container - Multiple arrows integrated into real world */
+/* AR Path Container - Full-screen overlay with perspective, directly above camera */
 .ar-path-container {
-    position: fixed;
-    bottom: 18%;
-    left: 50%;
-    transform: translateX(-50%);
-    perspective: 2000px; /* Stronger perspective for 3D effect */
-    perspective-origin: center bottom;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     pointer-events: none;
     z-index: 12;
     opacity: 0;
     transition: opacity 0.3s ease;
     display: none;
-    width: 100%;
-    height: 60%;
+    perspective: 1000px;
+    perspective-origin: center 80%;
     transform-style: preserve-3d;
-    /* Make arrows look like they're inside the camera view */
-    mix-blend-mode: normal;
 }
 
 .arrow-path {
-    position: relative;
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     transform-style: preserve-3d;
-    transform-origin: center bottom;
-    /* Anchor at bottom, only rotate direction */
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    transition: none; /* NO TRANSITION - instant rotation for responsiveness */
-    will-change: transform; /* Optimize for frequent updates */
+    transition: none;
+    will-change: transform;
 }
 
 /* Individual Arrow Marker - 3D arrows integrated into real world */
@@ -735,7 +729,7 @@ body {
     }
 }
 
-/* Ground-projected path arrows (Google Maps Live View style) */
+/* Ground-projected path arrows - anchored to floor, transform from base */
 .ar-path-arrow {
     position: absolute;
     width: 70px;
@@ -743,9 +737,7 @@ body {
     transform-style: preserve-3d;
     transition: none;
     animation: arrowGlow 2s ease-in-out infinite;
-    bottom: 0;
-    left: 50%;
-    transform-origin: center bottom;
+    transform-origin: 50% 100%;
     filter: drop-shadow(0 6px 12px rgba(0, 255, 136, 0.6)) 
             drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
     will-change: transform;
@@ -903,11 +895,6 @@ body {
         font-size: 12px;
         color: #00ff88;
         padding: 6px 12px;
-    }
-    
-    .ar-path-container {
-        bottom: 18%;
-        height: 45%;
     }
     
     .ar-arrow-marker {
