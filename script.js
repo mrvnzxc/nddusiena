@@ -256,24 +256,12 @@ function startWatchingPosition() {
             if (GraphNav.engine && GraphNav.activeDestination && GraphNav.pendingDestinationId && !GraphNav.finalLegActive) {
                 const now = Date.now();
 
-                // Current target checkpoint from engine (may be null before first plan)
-                const currentCp = GraphNav.engine.getCurrentTargetCheckpoint();
-                let dCurrent = Infinity;
-                if (currentCp) {
-                    dCurrent = haversineDistanceMeters(
-                        lat,
-                        lng,
-                        parseFloat(currentCp.latitude),
-                        parseFloat(currentCp.longitude)
-                    );
-                }
-
-                // Decide whether to (re)compute the shortest path from *current* position:
+                // Decide whether to (re)compute the shortest path:
                 // - First time (no path yet)
-                // - Or user is far from the current target (likely took a different route)
+                // - Or user is > 25m from ALL checkpoints in current path (off-route)
                 const needsReplan =
-                    !GraphNav.engine.path ||
-                    (isFinite(dCurrent) && dCurrent > GraphNav.replanThreshold);
+                    !GraphNav.engine.currentPath.length ||
+                    GraphNav.engine.isUserOffPath(lat, lng, GraphNav.replanThreshold);
 
                 if (needsReplan && (!GraphNav.lastReplanTs || now - GraphNav.lastReplanTs > 4000)) {
                     try {
@@ -302,7 +290,7 @@ function startWatchingPosition() {
                 }
 
                 // While following checkpoint path (before final leg), update per position
-                if (GraphNav.engine.path && !GraphNav.finalLegActive) {
+                if (GraphNav.engine.currentPath.length && !GraphNav.finalLegActive) {
                     GraphNav.engine.updateUserPosition(lat, lng);
                 }
             }
@@ -805,27 +793,35 @@ function updateNavigation() {
     if (AppState.heading !== null && AppState.headingUsable && AppState.headingStable) {
         let targetBearing;
 
-        if (
-            usingGraph &&
-            targetLat !== null &&
-            targetLon !== null &&
-            AppState.gpsPosition.lat !== null &&
-            AppState.gpsPosition.lng !== null
-        ) {
-            // Use true compass bearing from GPS to current checkpoint
+        // Graph navigation (checkpoint phase): arrow bearing STRICTLY from getCurrentTargetCheckpoint only
+        const target = GraphNav.engine ? GraphNav.engine.getCurrentTargetCheckpoint() : null;
+        if (usingGraph && !GraphNav.finalLegActive && target) {
+            const userLat = AppState.gpsPosition.lat;
+            const userLon = AppState.gpsPosition.lng;
+            if (userLat !== null && userLon !== null) {
+                targetBearing = bearingBetweenLatLon(userLat, userLon, parseFloat(target.latitude), parseFloat(target.longitude));
+            } else {
+                const targetLocal = target.local || convertGPSToLocal(parseFloat(target.latitude), parseFloat(target.longitude));
+                targetBearing = calculateBearing(AppState.userPosition, { x: targetLocal.x, y: targetLocal.y });
+            }
+            console.log('ARROW TARGET:', target.name);
+        } else if (usingGraph && GraphNav.finalLegActive && targetLat !== null && targetLon !== null && AppState.gpsPosition.lat !== null && AppState.gpsPosition.lng !== null) {
+            // Final leg: bearing to office coordinates
             targetBearing = bearingBetweenLatLon(
                 AppState.gpsPosition.lat,
                 AppState.gpsPosition.lng,
                 targetLat,
                 targetLon
             );
-        } else {
-            // Fallback: bearing in local coordinate space
+        } else if (!usingGraph) {
+            // Non-graph: bearing in local coordinate space
             const targetPoint = currentPathway.length > 0 ? currentPathway[0] : destination;
             targetBearing = calculateBearing(AppState.userPosition, targetPoint);
+        } else {
+            targetBearing = null;
         }
 
-        const arrowRotation = calculateArrowRotation(AppState.heading, targetBearing);
+        const arrowRotation = targetBearing !== null ? calculateArrowRotation(AppState.heading, targetBearing) : 0;
         
         // Rotate arrow IMMEDIATELY with accurate calculation
         rotateArrow(arrowRotation);
@@ -1562,8 +1558,8 @@ class NavigationEngineGraph {
         this.adjacency = buildAdjacencyGraph(edges);
         this.arrivalRadiusMeters = arrivalRadiusMeters;
 
-        this.path = null;      // array of checkpoint IDs (start..destination)
-        this.currentIndex = 0; // index of CURRENT target in path
+        this.currentPath = [];       // full checkpoint ID path from Dijkstra
+        this.currentPathIndex = 0;   // index of current position in path (arrow points to currentPath[currentPathIndex + 1])
 
         this.onCheckpointReached = null;
         this.onArrived = null;
@@ -1588,69 +1584,66 @@ class NavigationEngineGraph {
             throw new Error('No path to destination checkpoint');
         }
 
-        this.path = path;
-        this.currentIndex = path.length > 1 ? 1 : 0;
+        this.currentPath = path;
+        this.currentPathIndex = -1;
+        console.log('FULL PATH:', this.currentPath.map(id => this.checkpointById.get(id)?.name || id));
+        console.log('CURRENT INDEX:', this.currentPathIndex);
     }
 
     getCurrentTargetCheckpoint() {
-        if (!this.path || this.currentIndex >= this.path.length) return null;
-        const id = this.path[this.currentIndex];
-        return this.checkpointById.get(id) || null;
+        const nextCheckpoint = this.currentPath[this.currentPathIndex + 1];
+        if (nextCheckpoint === undefined) return null;
+        const cp = this.checkpointById.get(nextCheckpoint);
+        return cp || null;
     }
 
     getRemainingPathCheckpoints() {
-        if (!this.path) return [];
-        return this.path
-            .slice(this.currentIndex)
+        if (!this.currentPath.length) return [];
+        return this.currentPath
+            .slice(this.currentPathIndex + 1)
             .map(id => this.checkpointById.get(id))
             .filter(Boolean);
     }
 
-    updateUserPosition(lat, lon) {
-        const target = this.getCurrentTargetCheckpoint();
-        if (!target) return;
+    isUserOffPath(lat, lon, thresholdMeters = 25) {
+        if (!this.currentPath.length) return true;
+        for (const id of this.currentPath) {
+            const cp = this.checkpointById.get(id);
+            if (!cp) continue;
+            const d = haversineDistanceMeters(lat, lon, parseFloat(cp.latitude), parseFloat(cp.longitude));
+            if (d <= thresholdMeters) return false;
+        }
+        return true;
+    }
 
-        const dCurrent = haversineDistanceMeters(
+    updateUserPosition(lat, lon) {
+        const nextCheckpoint = this.currentPath[this.currentPathIndex + 1];
+        if (nextCheckpoint === undefined) return;
+
+        const nextCp = this.checkpointById.get(nextCheckpoint);
+        if (!nextCp) return;
+
+        const distanceToNextCheckpoint = haversineDistanceMeters(
             lat,
             lon,
-            parseFloat(target.latitude),
-            parseFloat(target.longitude)
+            parseFloat(nextCp.latitude),
+            parseFloat(nextCp.longitude)
         );
 
-        // Auto-skip: if user is clearly closer to the next checkpoint than
-        // the current one, advance to keep navigation feeling natural.
-        let shouldAdvance = dCurrent < this.arrivalRadiusMeters;
+        console.log('NEXT TARGET:', nextCp.name);
 
-        const nextIndex = this.currentIndex + 1;
-        const hasNext = this.path && nextIndex < this.path.length;
-        if (!shouldAdvance && hasNext) {
-            const nextId = this.path[nextIndex];
-            const nextCp = this.checkpointById.get(nextId);
-            if (nextCp) {
-                const dNext = haversineDistanceMeters(
-                    lat,
-                    lon,
-                    parseFloat(nextCp.latitude),
-                    parseFloat(nextCp.longitude)
-                );
-                const SKIP_MARGIN = 10; // meters
-                if (dNext + SKIP_MARGIN < dCurrent) {
-                    shouldAdvance = true;
-                }
-            }
-        }
-
-        if (shouldAdvance) {
-            const reachedIndex = this.currentIndex;
-            this.currentIndex += 1;
+        if (distanceToNextCheckpoint < this.arrivalRadiusMeters) {
+            this.currentPathIndex += 1;
+            console.log('CURRENT INDEX:', this.currentPathIndex);
 
             if (this.onCheckpointReached) {
-                this.onCheckpointReached(target, reachedIndex, this.path.length);
+                this.onCheckpointReached(nextCp, this.currentPathIndex, this.currentPath.length);
             }
 
-            if (this.currentIndex >= this.path.length) {
+            const newNext = this.currentPath[this.currentPathIndex + 1];
+            if (newNext === undefined) {
                 if (this.onArrived) {
-                    this.onArrived(target);
+                    this.onArrived(nextCp);
                 }
             }
         }
