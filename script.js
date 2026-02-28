@@ -26,7 +26,8 @@ const AppState = {
     locationDetected: false,
     locationWatchId: null,
     lastEnvironmentCheck: null,
-    distanceSamples: [] // recent distance readings for smoothing
+    distanceSamples: [], // recent distance readings for smoothing
+    useWebXR: false // true when WebXR immersive-ar session is active; false = compass fallback
 };
 
 // Graph-based navigation state (checkpoint graph using Supabase)
@@ -58,6 +59,171 @@ const BUILDING_CONFIG = {
 const API_BASE_URL = 'api.php';
 const GRAPH_API_ACTION = 'get_nav_graph';
 
+// WebXR state - world-anchored AR on supported Android
+const WebXRArrows = {
+    supported: false,
+    session: null,
+    renderer: null,
+    scene: null,
+    camera: null,
+    arrowMeshes: [],
+    container: null,
+    threeLoaded: false,
+
+    async checkSupport() {
+        if (typeof navigator === 'undefined' || !navigator.xr) return false;
+        try {
+            this.supported = await navigator.xr.isSessionSupported('immersive-ar');
+            console.log('WebXR immersive-ar supported:', this.supported);
+            return this.supported;
+        } catch (e) {
+            console.log('WebXR check failed:', e.message);
+            return false;
+        }
+    },
+
+    async loadThree() {
+        if (window.THREE) {
+            this.threeLoaded = true;
+            return true;
+        }
+        return new Promise((resolve) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js';
+            script.onload = () => {
+                this.threeLoaded = true;
+                resolve(true);
+            };
+            script.onerror = () => resolve(false);
+            document.head.appendChild(script);
+        });
+    },
+
+    async startSession() {
+        if (!this.supported || !navigator.xr) return false;
+        try {
+            await this.loadThree();
+            if (!window.THREE) {
+                console.warn('Three.js failed to load, using compass fallback');
+                return false;
+            }
+            const session = await navigator.xr.requestSession('immersive-ar', {
+                optionalFeatures: ['local-floor']
+            });
+            this.session = session;
+            this._setupThreeScene();
+            await this._setupWebGL(session);
+            AppState.useWebXR = true;
+            const pathContainer = document.getElementById('ar-path-container');
+            if (pathContainer) pathContainer.style.display = 'none';
+            const camVideo = document.getElementById('camera-video');
+            if (camVideo) camVideo.style.display = 'none';
+            console.log('WebXR mode active: world-anchored arrows');
+            return true;
+        } catch (e) {
+            console.log('WebXR session failed, using compass fallback:', e.message);
+            AppState.useWebXR = false;
+            return false;
+        }
+    },
+
+    _setupThreeScene() {
+        const THREE = window.THREE;
+        if (!THREE) return;
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 100);
+        this.camera.position.set(0, 1.6, 0);
+        this.arrowMeshes = [];
+    },
+
+    async _setupWebGL(session) {
+        const THREE = window.THREE;
+        if (!THREE) return;
+        this.container = document.getElementById('camera-container') || document.body;
+        const canvas = document.createElement('canvas');
+        canvas.id = 'webxr-canvas';
+        canvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+        this.container.appendChild(canvas);
+
+        this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        this.renderer.xr.enabled = true;
+        this.renderer.xr.setSession(session);
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.renderer.setAnimationLoop(() => this._renderLoop());
+    },
+
+    _renderLoop() {
+        if (this.renderer && this.scene && this.camera) {
+            this.renderer.render(this.scene, this.camera);
+        }
+    },
+
+    gpsToLocalFloor(userLat, userLon, cpLat, cpLon) {
+        const dLat = (parseFloat(cpLat) - parseFloat(userLat)) * BUILDING_CONFIG.metersPerDegreeLat;
+        const cosLat = Math.cos(parseFloat(userLat) * Math.PI / 180);
+        const dLon = (parseFloat(cpLon) - parseFloat(userLon)) * BUILDING_CONFIG.metersPerDegreeLng * cosLat;
+        return { x: dLon, y: 0, z: dLat };
+    },
+
+    updateArrows(userLat, userLon, checkpoints) {
+        if (!this.scene || !window.THREE) return;
+        if (!checkpoints || checkpoints.length === 0) {
+            this.arrowMeshes.forEach(m => { m.visible = false; });
+            return;
+        }
+        const THREE = window.THREE;
+        const maxArrows = Math.min(checkpoints.length, 5);
+        while (this.arrowMeshes.length < maxArrows) {
+            const geo = new THREE.ConeGeometry(0.15, 0.5, 8);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x00ff88 });
+            const mesh = new THREE.Mesh(geo, mat);
+            this.scene.add(mesh);
+            this.arrowMeshes.push(mesh);
+        }
+        for (let i = 0; i < maxArrows; i++) {
+            const cp = checkpoints[i];
+            const pos = this.gpsToLocalFloor(userLat, userLon, cp.latitude, cp.longitude);
+            this.arrowMeshes[i].position.set(pos.x, pos.y, pos.z);
+            this.arrowMeshes[i].visible = true;
+        }
+        for (let i = maxArrows; i < this.arrowMeshes.length; i++) {
+            this.arrowMeshes[i].visible = false;
+        }
+    },
+
+    endSession() {
+        if (this.session) {
+            this.session.end();
+            this.session = null;
+        }
+        if (this.renderer) {
+            this.renderer.setAnimationLoop(null);
+            this.renderer.dispose();
+            if (this.renderer.domElement?.parentNode) {
+                this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
+            }
+            this.renderer = null;
+        }
+        if (this.scene) {
+            this.arrowMeshes.forEach(m => {
+                if (m.geometry) m.geometry.dispose();
+                if (m.material) m.material.dispose();
+                this.scene.remove(m);
+            });
+            this.arrowMeshes = [];
+            this.scene = null;
+        }
+        this.camera = null;
+        AppState.useWebXR = false;
+        const pathContainer = document.getElementById('ar-path-container');
+        if (pathContainer) pathContainer.style.display = '';
+        const camVideo = document.getElementById('camera-video');
+        if (camVideo) camVideo.style.display = '';
+        console.log('WebXR session ended, compass fallback active');
+    }
+};
+
 /**
  * Initialize the application
  */
@@ -82,6 +248,9 @@ async function init() {
 
     // Load checkpoint graph (checkpoints, edges, destinations) for graph-based navigation
     await loadNavigationGraph();
+
+    // Detect WebXR immersive-ar support (Android with ARCore)
+    await WebXRArrows.checkSupport();
     
     // Detect user's current location
     await detectUserLocation();
@@ -790,7 +959,7 @@ function updateNavigation() {
     const hasManualPos = AppState.userPosition.x != null && AppState.userPosition.y != null;
     const usePathArrows = usingGraph && !GraphNav.finalLegActive && GraphNav.engine &&
         (hasGps || hasManualPos) &&
-        AppState.heading !== null && AppState.headingUsable;
+        (AppState.useWebXR || (AppState.heading !== null && AppState.headingUsable));
 
     const arrowPathEl = document.getElementById('arrow-path');
     if (usePathArrows) {
@@ -801,7 +970,12 @@ function updateNavigation() {
             pathUserLat = BUILDING_CONFIG.originLat + (AppState.userPosition.y || 0) / BUILDING_CONFIG.metersPerDegreeLat;
             pathUserLon = BUILDING_CONFIG.originLng + (AppState.userPosition.x || 0) / m;
         }
-        renderPathArrows(pathUserLat, pathUserLon, AppState.heading);
+        if (AppState.useWebXR) {
+            const remaining = GraphNav.engine.getRemainingPathCheckpoints() || [];
+            WebXRArrows.updateArrows(pathUserLat, pathUserLon, remaining.slice(0, 5));
+        } else {
+            renderPathArrows(pathUserLat, pathUserLon, AppState.heading);
+        }
     } else {
         // Legacy: single rotated arrow path or final-leg/non-graph mode
         const hasPathArrows = arrowPathEl?.querySelector('.ar-path-arrow');
@@ -1403,12 +1577,30 @@ function startNavigation(room) {
     // Request camera permission automatically
     requestCameraPermission();
     
-    // Show floor marker
+    // Try WebXR immersive-ar (must be in user gesture; falls back to compass if unsupported)
+    if (WebXRArrows.supported) {
+        tryStartWebXRSession();
+    } else {
+        console.log('AR mode: compass fallback (WebXR not supported on this device)');
+    }
+    
+    // Show floor marker (hidden when WebXR active)
     showFloorMarker();
     
     // Start navigation updates
     updateNavigation();
     updateStatus(`Navigating to ${room.display_name}`, 'success');
+}
+
+/**
+ * Try to start WebXR immersive-ar session (must be called from user gesture).
+ * Falls back silently to compass mode if unsupported or session fails.
+ */
+async function tryStartWebXRSession() {
+    const started = await WebXRArrows.startSession();
+    if (!started) {
+        console.log('AR mode: compass fallback (WebXR session could not start)');
+    }
 }
 
 /**
@@ -1447,6 +1639,11 @@ function goBackToLanding() {
     
     // Hide floor marker
     hideFloorMarker();
+
+    // End WebXR session if active
+    if (AppState.useWebXR && WebXRArrows.endSession) {
+        WebXRArrows.endSession();
+    }
     
     // Stop camera if active
     if (AppState.camera) {
