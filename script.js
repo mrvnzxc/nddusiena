@@ -55,6 +55,16 @@ const BUILDING_CONFIG = {
     metersPerDegreeLng: 111000 // Will be adjusted based on latitude
 };
 
+// Sensor smoothing (GPS and compass) - reduces jitter and drift into non-walkable areas
+const GPS_EMA_ALPHA = 0.15;
+const GPS_MOVEMENT_THRESHOLD_M = 1.5;
+const HEADING_LERP_FACTOR = 0.2;
+let smoothedLat = null;
+let smoothedLon = null;
+let lastAcceptedLat = null;
+let lastAcceptedLon = null;
+let smoothedHeading = null;
+
 // Supabase Configuration (no PHP - direct client for Vercel/static hosting)
 const SUPABASE_URL = 'https://pllmhqlssdmfijqagkxi.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsbG1ocWxzc2RtZmlqcWFna3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NTEwOTEsImV4cCI6MjA4NzQyNzA5MX0.3QUWRVZo8EiyhsuUO-OFA2rrN51FxjL6or8Atp7htTE';
@@ -359,23 +369,19 @@ async function detectUserLocation() {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
         const accuracy = position.coords.accuracy;
-        
-        AppState.gpsPosition = { lat, lng };
-        
-        // Convert GPS coordinates to local building coordinates
-        const localCoords = convertGPSToLocal(lat, lng);
+        smoothedLat = lat;
+        smoothedLon = lng;
+        lastAcceptedLat = lat;
+        lastAcceptedLon = lng;
+        AppState.gpsPosition = { lat: smoothedLat, lng: smoothedLon };
+        const localCoords = convertGPSToLocal(smoothedLat, smoothedLon);
         AppState.userPosition = localCoords;
         AppState.locationDetected = true;
-        
         updateLocationStatus(`Location detected (Accuracy: ${Math.round(accuracy)}m)`, 'success');
-        
-        // Update AR view position display if visible
         updateARPositionDisplay();
-        
-        // Start watching position for continuous updates
         startWatchingPosition();
-        
         console.log('Location detected:', { lat, lng, local: localCoords });
+        console.log('Smoothed GPS:', smoothedLat, smoothedLon);
         
     } catch (error) {
         console.error('Geolocation error:', error);
@@ -417,59 +423,57 @@ function startWatchingPosition() {
         (position) => {
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
-            
-            AppState.gpsPosition = { lat, lng };
-            const localCoords = convertGPSToLocal(lat, lng);
+            const movementM = (lastAcceptedLat != null && lastAcceptedLon != null)
+                ? haversineDistanceMeters(lastAcceptedLat, lastAcceptedLon, lat, lng)
+                : Infinity;
+            if (movementM < GPS_MOVEMENT_THRESHOLD_M) {
+                return;
+            }
+            if (smoothedLat == null || smoothedLon == null) {
+                smoothedLat = lat;
+                smoothedLon = lng;
+            } else {
+                smoothedLat = GPS_EMA_ALPHA * lat + (1 - GPS_EMA_ALPHA) * smoothedLat;
+                smoothedLon = GPS_EMA_ALPHA * lng + (1 - GPS_EMA_ALPHA) * smoothedLon;
+            }
+            lastAcceptedLat = smoothedLat;
+            lastAcceptedLon = smoothedLon;
+            AppState.gpsPosition = { lat: smoothedLat, lng: smoothedLon };
+            const localCoords = convertGPSToLocal(smoothedLat, smoothedLon);
             AppState.userPosition = localCoords;
-            
-            // Update AR view position display if visible
+            console.log('Smoothed GPS:', smoothedLat, smoothedLon);
             updateARPositionDisplay();
-            
-            // Graph-based navigation: continuously map-match and replan when needed
             if (GraphNav.engine && GraphNav.activeDestination && GraphNav.pendingDestinationId && !GraphNav.finalLegActive) {
                 const now = Date.now();
-
-                // Decide whether to (re)compute the shortest path:
-                // - First time (no path yet)
-                // - Or user is > 25m from ALL checkpoints in current path (off-route)
                 const needsReplan =
                     !GraphNav.engine.currentPath.length ||
-                    GraphNav.engine.isUserOffPath(lat, lng, GraphNav.replanThreshold);
-
+                    GraphNav.engine.isUserOffPath(smoothedLat, smoothedLon, GraphNav.replanThreshold);
                 if (needsReplan && (!GraphNav.lastReplanTs || now - GraphNav.lastReplanTs > 4000)) {
                     try {
                         GraphNav.engine.startNavigationFromUser({
-                            userLat: lat,
-                            userLon: lng,
+                            userLat: smoothedLat,
+                            userLon: smoothedLon,
                             destinationCheckpointId: GraphNav.pendingDestinationId
                         });
-
                         GraphNav.engine.onCheckpointReached = (checkpoint, index, total) => {
                             console.log('Reached checkpoint:', checkpoint.name);
                         };
-
                         GraphNav.engine.onArrived = (finalCheckpoint) => {
                             console.log('Reached final checkpoint in graph:', finalCheckpoint.name);
-                            // Switch to final leg: from user to actual office coordinates.
                             GraphNav.finalLegActive = true;
                             GraphNav.finalCheckpoint = finalCheckpoint;
                             GraphNav.pendingDestinationId = null;
                         };
-
                         GraphNav.lastReplanTs = now;
                     } catch (err) {
                         console.error('Error (re)starting graph navigation:', err);
                     }
                 }
-
-                // While following checkpoint path (before final leg), update per position
                 if (GraphNav.engine.currentPath.length && !GraphNav.finalLegActive) {
                     const gpsAccuracy = position.coords.accuracy;
-                    GraphNav.engine.updateUserPosition(lat, lng, gpsAccuracy);
+                    GraphNav.engine.updateUserPosition(smoothedLat, smoothedLon, gpsAccuracy);
                 }
             }
-
-            // Update navigation if active
             if (AppState.isNavigating && AppState.selectedRoom) {
                 updateNavigation();
             }
@@ -586,32 +590,30 @@ function handleDeviceOrientation(event) {
     }
 
     if (alpha !== null && alpha !== undefined) {
-        // Normalize to 0-360 range
         const newHeading = normalizeAngle(alpha);
-        
-        // Update heading immediately
-        AppState.heading = newHeading;
-
-        // Track recent headings to detect when compass is stable
-        AppState.headingSamples.push(newHeading);
+        if (smoothedHeading == null) {
+            smoothedHeading = newHeading;
+        } else {
+            const d = headingDiff(smoothedHeading, newHeading);
+            smoothedHeading = normalizeAngle(smoothedHeading + HEADING_LERP_FACTOR * d);
+        }
+        AppState.heading = smoothedHeading;
+        AppState.headingSamples.push(smoothedHeading);
         if (AppState.headingSamples.length > 10) {
             AppState.headingSamples.shift();
         }
         if (AppState.headingSamples.length >= 4) {
             const minH = Math.min(...AppState.headingSamples);
             const maxH = Math.max(...AppState.headingSamples);
-            AppState.headingStable = (maxH - minH) <= 20; // within 20 degrees window
+            AppState.headingStable = (maxH - minH) <= 20;
         } else {
             AppState.headingStable = false;
         }
-
         const headingDisplay = document.getElementById('heading-value');
         if (headingDisplay) {
             headingDisplay.textContent = Math.round(AppState.heading);
         }
-        
-        // Update navigation IMMEDIATELY for instant arrow rotation
-        // Only when heading is considered usable (tilt) and reasonably stable
+        console.log('Smoothed Heading:', smoothedHeading);
         if (AppState.isNavigating && AppState.selectedRoom && AppState.headingUsable && AppState.headingStable) {
             updateNavigation();
         }
@@ -627,6 +629,16 @@ function normalizeAngle(angle) {
         angle += 360;
     }
     return angle;
+}
+
+/**
+ * Shortest signed angle difference (to - from), in [-180, 180], for heading wrap-around
+ */
+function headingDiff(fromDeg, toDeg) {
+    let d = (toDeg - fromDeg) % 360;
+    if (d > 180) d -= 360;
+    if (d < -180) d += 360;
+    return d;
 }
 
 /**
