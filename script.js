@@ -56,9 +56,9 @@ const BUILDING_CONFIG = {
 };
 
 // Sensor smoothing (GPS and compass) - reduces jitter and drift into non-walkable areas
-const GPS_EMA_ALPHA = 0.15;
-const GPS_MOVEMENT_THRESHOLD_M = 1.5;
-const HEADING_LERP_FACTOR = 0.2;
+const GPS_EMA_ALPHA = 0.1;
+const GPS_MOVEMENT_THRESHOLD_M = 3.5;
+const HEADING_LERP_FACTOR = 0.25;
 let smoothedLat = null;
 let smoothedLon = null;
 let lastAcceptedLat = null;
@@ -311,7 +311,12 @@ function setupEventListeners() {
     
     // Device orientation events
     if (window.DeviceOrientationEvent) {
-        window.addEventListener('deviceorientation', handleDeviceOrientation);
+        // Prefer absolute orientation (true compass) on Android
+        if (window.DeviceOrientationEvent && 'ondeviceorientationabsolute' in window) {
+            window.addEventListener('deviceorientationabsolute', handleDeviceOrientation);
+        } else {
+            window.addEventListener('deviceorientation', handleDeviceOrientation);
+        }
     } else if (window.DeviceOrientationEvent && typeof window.DeviceOrientationEvent.requestPermission === 'function') {
         // iOS 13+ requires permission
         if (requestCameraBtn) {
@@ -571,12 +576,18 @@ async function requestCameraPermission() {
  * Handle device orientation events
  */
 function handleDeviceOrientation(event) {
-    // Get compass heading from device orientation (0-360)
-    let alpha = event.alpha;
-    
-    if (alpha === null || alpha === undefined) {
-        // Try alternative property names for iOS
-        alpha = event.webkitCompassHeading || event.absolute || null;
+    // Get compass heading from device orientation (0-360, North=0, clockwise)
+    let alpha = null;
+
+    if (typeof event.webkitCompassHeading === 'number') {
+        // iOS: webkitCompassHeading is already true-North clockwise (0-360)
+        alpha = event.webkitCompassHeading;
+    } else if (event.absolute === true && typeof event.alpha === 'number') {
+        // Android absolute: alpha is counterclockwise from North, convert to clockwise
+        alpha = (360 - event.alpha) % 360;
+    } else if (typeof event.alpha === 'number') {
+        // Fallback: treat alpha as-is (may not be true North)
+        alpha = (360 - event.alpha) % 360;
     }
     
     // Determine if phone is too tilted (e.g. pointed at ground)
@@ -691,9 +702,9 @@ function calculateArrowRotation(heading, bearing) {
         return 0;
     }
     
-    // Calculate the difference: heading (where you're facing) - bearing (where to go)
-    // Positive = target is to your LEFT, negative = to your RIGHT
-    let angleDiff = heading - bearing;
+    // Calculate the difference: bearing (where to go) - heading (where you're facing)
+    // Positive = target is to your RIGHT, negative = to your LEFT
+    let angleDiff = bearing - heading;
     
     // Normalize to -180 to 180 range for shortest rotation path
     // This ensures we always take the shortest turn direction
@@ -912,7 +923,7 @@ function updateNavigation() {
     updateDistanceDisplay(smoothedDistance);
     
     // Handle arrival on final leg for graph navigation (office coordinates)
-    if (usingGraph && GraphNav.finalLegActive && smoothedDistance < 25 && GraphNav.activeDestination) {
+    if (usingGraph && GraphNav.finalLegActive && smoothedDistance < 10 && GraphNav.activeDestination) {
         showArrivalMessage(GraphNav.activeDestination.name);
         hideFloorMarker();
         hideEnvironmentMessage();
