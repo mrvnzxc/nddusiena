@@ -84,13 +84,14 @@ join public.checkpoints c_to   on c_to.name   = ep.to_name
 on conflict do nothing;
 
 
--- Destinations
+-- Destinations (dest coords should be the actual office window/counter, NOT near the hallway checkpoint)
+-- To update existing rows: run the UPDATE statements below after initial insert.
 insert into public.destinations (name, checkpoint_id, dest_latitude, dest_longitude)
 select
   'Finance',
   c.id,
-  6.153091397311858,
-  125.167454786213
+  6.153050,
+  125.167430
 from public.checkpoints c
 where c.name = 'hallway_2'
 on conflict (name) do nothing;
@@ -99,17 +100,24 @@ insert into public.destinations (name, checkpoint_id, dest_latitude, dest_longit
 select
   'Registrar',
   c.id,
-  6.1530593962271745,
-  125.1675131242591
+  6.153040,
+  125.167500
 from public.checkpoints c
 where c.name = 'hallway_2'
 on conflict (name) do nothing;
 
-insert into public.destinations (name, checkpoint_id)
+insert into public.destinations (name, checkpoint_id, dest_latitude, dest_longitude)
 select
   'Clinic',
-  c.id
+  c.id,
+  6.152984,
+  125.167690
 from public.checkpoints c
 where c.name = 'front_clinic'
 on conflict (name) do nothing;
+
+-- UPDATE existing destination rows (run this if data was already seeded with old coords)
+update public.destinations set dest_latitude = 6.153050, dest_longitude = 125.167430 where name = 'Finance';
+update public.destinations set dest_latitude = 6.153040, dest_longitude = 125.167500 where name = 'Registrar';
+update public.destinations set dest_latitude = 6.152984, dest_longitude = 125.167690 where name = 'Clinic';
 

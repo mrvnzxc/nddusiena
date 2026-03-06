@@ -43,7 +43,8 @@ const GraphNav = {
     finalLegActive: false,      // true when walking last meters to office door
     finalCheckpoint: null,      // last checkpoint before office
     replanThreshold: 25,        // meters: when too far from current target, recompute path
-    lastReplanTs: 0             // timestamp of last replan (ms)
+    lastReplanTs: 0,            // timestamp of last replan (ms)
+    finalLegStartTs: 0          // timestamp when final leg began (ms)
 };
 
 // GPS to Local Coordinate Conversion Configuration
@@ -56,9 +57,9 @@ const BUILDING_CONFIG = {
 };
 
 // Sensor smoothing (GPS and compass) - reduces jitter and drift into non-walkable areas
-const GPS_EMA_ALPHA = 0.1;
-const GPS_MOVEMENT_THRESHOLD_M = 3.5;
-const HEADING_LERP_FACTOR = 0.25;
+const GPS_EMA_ALPHA = 0.4;
+const GPS_MOVEMENT_THRESHOLD_M = 1.5;
+const HEADING_LERP_FACTOR = 0.35;
 let smoothedLat = null;
 let smoothedLon = null;
 let lastAcceptedLat = null;
@@ -310,23 +311,30 @@ function setupEventListeners() {
     }
     
     // Device orientation events
-    if (window.DeviceOrientationEvent) {
-        // Prefer absolute orientation (true compass) on Android
-        if (window.DeviceOrientationEvent && 'ondeviceorientationabsolute' in window) {
-            window.addEventListener('deviceorientationabsolute', handleDeviceOrientation);
+    // Android: prefer deviceorientationabsolute for real compass heading (not arbitrary alpha)
+    // iOS: use webkitCompassHeading from regular deviceorientation
+    let absoluteListenerBound = false;
+    if ('ondeviceorientationabsolute' in window) {
+        window.addEventListener('deviceorientationabsolute', handleDeviceOrientation);
+        absoluteListenerBound = true;
+        console.log('Using deviceorientationabsolute (true compass)');
+    }
+    if (!absoluteListenerBound && window.DeviceOrientationEvent) {
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            if (requestCameraBtn) {
+                requestCameraBtn.addEventListener('click', async () => {
+                    try {
+                        const permission = await DeviceOrientationEvent.requestPermission();
+                        if (permission === 'granted') {
+                            window.addEventListener('deviceorientation', handleDeviceOrientation);
+                        }
+                    } catch (e) { console.warn('Orientation permission error:', e); }
+                });
+            }
         } else {
             window.addEventListener('deviceorientation', handleDeviceOrientation);
         }
-    } else if (window.DeviceOrientationEvent && typeof window.DeviceOrientationEvent.requestPermission === 'function') {
-        // iOS 13+ requires permission
-        if (requestCameraBtn) {
-            requestCameraBtn.addEventListener('click', async () => {
-                const permission = await DeviceOrientationEvent.requestPermission();
-                if (permission === 'granted') {
-                    window.addEventListener('deviceorientation', handleDeviceOrientation);
-                }
-            });
-        }
+        console.log('Using deviceorientation (may be relative on some Android)');
     }
     
     // Window resize handler
@@ -467,6 +475,7 @@ function startWatchingPosition() {
                             console.log('Reached final checkpoint in graph:', finalCheckpoint.name);
                             GraphNav.finalLegActive = true;
                             GraphNav.finalCheckpoint = finalCheckpoint;
+                            GraphNav.finalLegStartTs = Date.now();
                             GraphNav.pendingDestinationId = null;
                         };
                         GraphNav.lastReplanTs = now;
@@ -576,32 +585,29 @@ async function requestCameraPermission() {
  * Handle device orientation events
  */
 function handleDeviceOrientation(event) {
-    // Get compass heading from device orientation (0-360, North=0, clockwise)
-    let alpha = null;
+    // Extract compass heading (0° = North, clockwise)
+    // iOS: webkitCompassHeading is already a compass heading (0=N, clockwise)
+    // Android absolute: alpha is 0=N but counterclockwise, so heading = (360 - alpha)
+    // Android relative: alpha is arbitrary - unusable for navigation
+    let compassHeading = null;
 
     if (typeof event.webkitCompassHeading === 'number') {
-        // iOS: webkitCompassHeading is already true-North clockwise (0-360)
-        alpha = event.webkitCompassHeading;
-    } else if (event.absolute === true && typeof event.alpha === 'number') {
-        // Android absolute: alpha is counterclockwise from North, convert to clockwise
-        alpha = (360 - event.alpha) % 360;
+        compassHeading = event.webkitCompassHeading;
+    } else if (event.absolute && typeof event.alpha === 'number') {
+        compassHeading = (360 - event.alpha) % 360;
     } else if (typeof event.alpha === 'number') {
-        // Fallback: treat alpha as-is (may not be true North)
-        alpha = (360 - event.alpha) % 360;
+        compassHeading = (360 - event.alpha) % 360;
     }
-    
-    // Determine if phone is too tilted (e.g. pointed at ground)
-    // beta ~ 0 when flat on table, ~90 when upright in portrait
+
     const beta = typeof event.beta === 'number' ? event.beta : null;
     if (beta !== null) {
-        // Treat heading as unreliable if phone is very flat or upside-down
         AppState.headingUsable = Math.abs(beta) > 30 && Math.abs(beta) < 120;
     } else {
         AppState.headingUsable = true;
     }
 
-    if (alpha !== null && alpha !== undefined) {
-        const newHeading = normalizeAngle(alpha);
+    if (compassHeading !== null) {
+        const newHeading = normalizeAngle(compassHeading);
         if (smoothedHeading == null) {
             smoothedHeading = newHeading;
         } else {
@@ -839,15 +845,21 @@ function updateNavigation() {
     if (
         usingGraph &&
         GraphNav.finalLegActive &&
-        GraphNav.activeDestination &&
-        GraphNav.activeDestination.dest_latitude !== null &&
-        GraphNav.activeDestination.dest_longitude !== null
+        GraphNav.activeDestination
     ) {
-        // Final meters: direct to the office
-        targetLat = parseFloat(GraphNav.activeDestination.dest_latitude);
-        targetLon = parseFloat(GraphNav.activeDestination.dest_longitude);
-        const local = convertGPSToLocal(targetLat, targetLon);
-        destination = { x: local.x, y: local.y, floor: 1 };
+        const hasDest = GraphNav.activeDestination.dest_latitude != null &&
+                        GraphNav.activeDestination.dest_longitude != null;
+        if (hasDest) {
+            targetLat = parseFloat(GraphNav.activeDestination.dest_latitude);
+            targetLon = parseFloat(GraphNav.activeDestination.dest_longitude);
+        } else if (GraphNav.finalCheckpoint) {
+            targetLat = parseFloat(GraphNav.finalCheckpoint.latitude);
+            targetLon = parseFloat(GraphNav.finalCheckpoint.longitude);
+        }
+        if (targetLat != null && targetLon != null) {
+            const local = convertGPSToLocal(targetLat, targetLon);
+            destination = { x: local.x, y: local.y, floor: 1 };
+        }
     } else if (usingGraph && currentCheckpoint) {
         targetLat = parseFloat(currentCheckpoint.latitude);
         targetLon = parseFloat(currentCheckpoint.longitude);
@@ -923,12 +935,15 @@ function updateNavigation() {
     updateDistanceDisplay(smoothedDistance);
     
     // Handle arrival on final leg for graph navigation (office coordinates)
-    if (usingGraph && GraphNav.finalLegActive && smoothedDistance < 10 && GraphNav.activeDestination) {
+    // Require at least 3 seconds on final leg before allowing arrival (prevent instant trigger)
+    const finalLegElapsed = GraphNav.finalLegStartTs ? (Date.now() - GraphNav.finalLegStartTs) : 0;
+    if (usingGraph && GraphNav.finalLegActive && smoothedDistance < 5 && finalLegElapsed > 3000 && GraphNav.activeDestination) {
         showArrivalMessage(GraphNav.activeDestination.name);
         hideFloorMarker();
         hideEnvironmentMessage();
         AppState.isNavigating = false;
         GraphNav.finalLegActive = false;
+        GraphNav.finalLegStartTs = 0;
         return;
     }
 
